@@ -1,7 +1,4 @@
 - 👋 Hi, I’m @bitswell
-- 👀 I’m interested in crypto
-- 🌱 I’m currently learning NEAR
-- 📫 How to reach me Make an issue in this [repo!](https://github.com/bitswell/bitswell/issues)
 
 <!---
 bitswell/bitswell is a ✨ special ✨ repository because its `README.md` (this file) appears on your GitHub profile.
