@@ -1,18 +1,34 @@
 # Tasks
 
-Each `.md` file in this directory is a task that `startup.sh` can run.
+A simple queue. Each `.md` file is a task — the file content is the prompt.
 
-The file content is the prompt — nothing more. No frontmatter, no config format.
-The filename (without extension) is the task name.
+## Folders
+
+```
+tasks/
+  unassigned/   ← waiting to be picked up
+  assigned/     ← currently running
+  done/         ← completed
+```
 
 ## Usage
 
 ```bash
-./startup.sh discover    # runs tasks/discover.md
-./startup.sh review      # runs tasks/review.md (create your own)
+./startup.sh          # picks next unassigned task, runs it
+./startup.sh status   # shows the queue
 ```
 
-## Writing a task
+When the script runs, it:
+1. Picks the first unassigned task (alphabetical)
+2. Moves it to `assigned/`
+3. Launches Claude in the background
+4. Moves it to `done/` when Claude finishes
 
-Create a new `.md` file. Write the prompt you want Claude to execute.
-Keep it grounded — one clear job per task.
+## Adding a task
+
+Create a `.md` file in `unassigned/`. Write the prompt. That's it.
+
+```bash
+echo "You are bitswell. Write a journal entry." > tasks/unassigned/journal.md
+./startup.sh
+```
