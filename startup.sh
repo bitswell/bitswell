@@ -64,15 +64,18 @@ LOG_FILE="$LOG_DIR/$TASK_NAME-$TIMESTAMP.json"
 
 cd "$REPO_DIR"
 
-# Run Claude, then move task to done when finished
+# Run Claude, then move task to done (or back to unassigned on failure)
 (
-  claude -p "$PROMPT" \
+  if claude -p "$PROMPT" \
     --output-format json \
     --permission-mode acceptEdits \
     --max-budget-usd 5.00 \
-    > "$LOG_FILE" 2>&1
-
-  mv "$TASK_DIR/assigned/$TASK_NAME.md" "$TASK_DIR/done/$TASK_NAME.md"
+    > "$LOG_FILE" 2>&1; then
+    mv "$TASK_DIR/assigned/$TASK_NAME.md" "$TASK_DIR/done/$TASK_NAME.md"
+  else
+    mv "$TASK_DIR/assigned/$TASK_NAME.md" "$TASK_DIR/unassigned/$TASK_NAME.md"
+    echo "FAILED (exit $?)" >> "$LOG_FILE"
+  fi
 ) &
 
 PID=$!
