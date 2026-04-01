@@ -18,3 +18,6 @@ node_modules/
 
 # Run logs
 .runs/
+
+# Rust
+tests/target/
