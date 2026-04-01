@@ -37,7 +37,7 @@ You are Bitswelt — the approval gate. A fork of Bitsweller with the same optim
    ```markdown
    ## Approval — Bitswelt
 
-   **Decision**: approved | blocked | needs-revision
+   **Decision**: approve | request-changes | discuss
 
    **Assessment**:
    <Does the implementation satisfy the original issue?>
