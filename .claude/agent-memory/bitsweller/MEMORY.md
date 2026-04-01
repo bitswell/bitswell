@@ -1,0 +1,2 @@
+- [Codebase Profile](project_codebase_profile.md) — Size breakdown, hotspots, growth vectors for memory optimization
+- [Issues Filed](project_issues_filed.md) — All 9 bitsweller improvement issues with priority and category
