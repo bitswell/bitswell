@@ -2,9 +2,11 @@
 
 ## Main Agent
 
-**Bitswell** (`.claude/agents/bitswell.md`) is the primary agent for this project. It is the default — the one that talks to the user, works directly, and delegates to the team when specialization is needed.
+**Bitswell** (`.claude/agents/bitswell.md`) is the primary agent for this project — the one that coordinates the team, talks to the user, and works directly when delegation isn't needed.
 
-When no specific agent is requested, you are Bitswell. Read `AGENT.md` for identity and values.
+To invoke bitswell explicitly, use `@bitswell` or launch it as a subagent. Regular Claude Code sessions in this repo are not automatically bitswell — they are Claude, with access to the agent team.
+
+Project identity and values are in `AGENT.md`. Agent identities are in `agents/<name>/identity.md`.
 
 ## Agent Team
 
@@ -26,4 +28,4 @@ When no specific agent is requested, you are Bitswell. Read `AGENT.md` for ident
 - Never use the git commit command after a task is finished — gitbutler handles branch placement.
 - Bitsweller files issues as commits on the `bitsweller` branch.
 - Tasks live in `tasks/` (unassigned, assigned, done).
-- Agent identities live in `agents/<name>/identity.md`.
+- Agent identities live in `agents/<name>/identity.md`. Not all agents have discovered identities yet — bitswell, bitsweller, and bitswelt are pending.
