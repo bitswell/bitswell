@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trivia Night</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Start Screen -->
+    <div id="screen-start" class="screen active">
+      <div class="logo">?</div>
+      <h1>Trivia Night</h1>
+      <p class="subtitle">210 questions across 6 categories</p>
+
+      <div class="setup">
+        <h2>Choose Categories</h2>
+        <div id="category-buttons" class="category-grid"></div>
+
+        <h2>Difficulty</h2>
+        <div class="difficulty-options">
+          <button class="diff-btn active" data-diff="all">All</button>
+          <button class="diff-btn" data-diff="easy">Easy</button>
+          <button class="diff-btn" data-diff="medium">Medium</button>
+          <button class="diff-btn" data-diff="hard">Hard</button>
+        </div>
+
+        <h2>Questions</h2>
+        <div class="question-count-options">
+          <button class="count-btn" data-count="10">10</button>
+          <button class="count-btn active" data-count="20">20</button>
+          <button class="count-btn" data-count="50">50</button>
+          <button class="count-btn" data-count="0">All</button>
+        </div>
+
+        <button id="btn-start" class="btn-primary">Start Game</button>
+      </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="screen-game" class="screen">
+      <div class="game-header">
+        <div class="progress">
+          <span id="question-num">1</span> / <span id="question-total">20</span>
+        </div>
+        <div class="score-display">
+          Score: <span id="score">0</span>
+        </div>
+        <div class="timer" id="timer">30</div>
+      </div>
+
+      <div class="progress-bar">
+        <div id="progress-fill" class="progress-fill"></div>
+      </div>
+
+      <div id="question-card" class="question-card">
+        <div class="category-badge" id="category-badge">Pop Culture</div>
+        <div class="difficulty-badge" id="difficulty-badge">easy</div>
+        <h2 id="question-text"></h2>
+        <div id="answers" class="answers"></div>
+      </div>
+
+      <div id="feedback" class="feedback hidden">
+        <div id="feedback-icon"></div>
+        <div id="feedback-text"></div>
+        <button id="btn-next" class="btn-primary">Next Question</button>
+      </div>
+    </div>
+
+    <!-- Results Screen -->
+    <div id="screen-results" class="screen">
+      <div class="results-card">
+        <h1>Game Over!</h1>
+        <div class="final-score">
+          <span id="final-score">0</span> / <span id="final-total">20</span>
+        </div>
+        <div id="score-percent" class="score-percent"></div>
+        <div id="score-message" class="score-message"></div>
+
+        <div id="stats" class="stats">
+          <div class="stat">
+            <div class="stat-value" id="stat-correct">0</div>
+            <div class="stat-label">Correct</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="stat-wrong">0</div>
+            <div class="stat-label">Wrong</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="stat-streak">0</div>
+            <div class="stat-label">Best Streak</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="stat-avg-time">0s</div>
+            <div class="stat-label">Avg Time</div>
+          </div>
+        </div>
+
+        <div class="results-actions">
+          <button id="btn-play-again" class="btn-primary">Play Again</button>
+          <button id="btn-new-game" class="btn-secondary">New Settings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
