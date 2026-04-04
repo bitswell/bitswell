@@ -1,0 +1,13 @@
+services:
+  webhook:
+    build: .
+    env_file: .env
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  smee:
+    image: node:22-alpine
+    command: npx smee-client --url ${SMEE_URL} --target http://webhook:3000/webhook
+    profiles: [dev]
+    depends_on: [webhook]
