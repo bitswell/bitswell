@@ -143,13 +143,12 @@ dispatch_agent() {
   prompt_file="$(mktemp)"
   cat > "$prompt_file" <<PROMPT
 You are agent "$AGENT_ID". Your assignment is "$ASSIGNMENT_ID".
-Your worktree: $worktree
+Your working directory is this git checkout. Use git commands normally (no -C flags needed).
 Read your identity: $identity
 Read your AGENT.json: $agent_json
 Your task (from the assignment commit):
 $task_body
 Commit protocol:
-- git -C $worktree for all git commands
 - Every commit: Agent-Id: $AGENT_ID, Session-Id: $agent_session_id
 - First commit: Task-Status: IMPLEMENTING
 - Final commit: Task-Status: COMPLETED with Key-Finding trailer(s)
@@ -158,8 +157,10 @@ PROMPT
 
   echo "  Prompt: $prompt_file"
   echo "  Spawning via: $SPAWN_CMD"
+  echo "  PWD: $worktree"
 
-  "$SPAWN_CMD" "$prompt_file" &
+  # cd into the worktree before spawning — agent sees it as PWD
+  (cd "$worktree" && "$SPAWN_CMD" "$prompt_file") &
   echo "  PID: $!"
   echo "  Agent $AGENT_ID dispatched."
 }
