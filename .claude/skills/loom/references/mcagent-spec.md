@@ -80,8 +80,8 @@ Lives inside the assignment directory, **outside** the worktree. This is the cri
   "token_budget": 200000,
   "dependencies": [],
   "scope": {
-    "paths_allowed": ["**/*"],
-    "paths_denied": [".mcagent/**"]
+    "paths_allowed": ["."],
+    "paths_denied": []
   },
   "timeout_seconds": 3600,
   "dispatch": {
@@ -106,6 +106,36 @@ A git worktree created via `git worktree add`. Points to the target repository, 
 **The worktree contains ONLY deliverable code.** No TASK.md, no PLAN.md, no STATUS.md, no MEMORY.md, no AGENT.json. These artifacts either live in the assignment directory (AGENT.json) or in commit messages (protocol state).
 
 The worktree path is always `.mcagent/agents/<name>/<assignment>/worktree/`. Implementations MUST NOT place the worktree elsewhere.
+
+**PWD convention**: The dispatch mechanism MUST `cd` into the worktree before spawning the agent. From the agent's perspective, its working directory is the worktree root — it sees a normal git checkout. The agent does not need to know about `.mcagent/` structure. Scope paths in AGENT.json (e.g., `"."`) are relative to the worktree root because that is the agent's PWD.
+
+### 3.6 Orchestrator Identity
+
+The orchestrator (typically `bitswell`) MUST have its own agent directory at `.mcagent/agents/<orchestrator-name>/` with:
+- `identity.md` -- persistent orchestrator identity
+- `orchestrator.json` -- declares orchestrator role and `.mcagent/**` write scope
+
+```json
+{
+  "agent_id": "<orchestrator-name>",
+  "role": "orchestrator",
+  "protocol_version": "loom/2",
+  "scope": {
+    "paths_allowed": [".mcagent/**"],
+    "paths_denied": []
+  },
+  "capabilities": [
+    "create-assignments",
+    "write-agent-json",
+    "create-worktrees",
+    "manage-branches",
+    "integrate-work",
+    "dispatch-agents"
+  ]
+}
+```
+
+Only the orchestrator writes to `.mcagent/`. Agents write only within their worktree (their PWD).
 
 ---
 
