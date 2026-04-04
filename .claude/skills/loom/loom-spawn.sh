@@ -20,6 +20,9 @@ EXTRA_ARGS="${CLAUDE_ARGS:-}"
 
 [[ -f "$PROMPT_FILE" ]] || { echo "Error: prompt file not found: $PROMPT_FILE" >&2; exit 1; }
 
+# Clean up prompt file on exit
+trap 'rm -f "$PROMPT_FILE"' EXIT
+
 # Verify we're in a git worktree
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "Error: not inside a git worktree. loom-dispatch.sh should cd into the worktree before calling this." >&2
@@ -30,7 +33,16 @@ echo "loom-spawn: worktree=$(pwd)"
 echo "loom-spawn: prompt=$PROMPT_FILE ($(wc -c < "$PROMPT_FILE") bytes)"
 echo "loom-spawn: invoking $CLAUDE"
 
-# Spawn Claude Code with the prompt
-# --print: non-interactive, output result to stdout
-# --dangerously-skip-permissions: agent needs full access to its worktree
-exec "$CLAUDE" --print $EXTRA_ARGS < "$PROMPT_FILE"
+# Build args array. Agent needs tools (interactive mode, no --print).
+# Add --yes for auto-approval unless CLAUDE_ARGS already contains it.
+ARGS=()
+if [[ -n "$EXTRA_ARGS" ]]; then
+  # shellcheck disable=SC2206
+  ARGS=($EXTRA_ARGS)
+fi
+if [[ "$EXTRA_ARGS" != *"--yes"* ]]; then
+  ARGS+=(--yes)
+fi
+
+# Spawn Claude Code with the prompt. Agent runs in interactive mode with tools.
+exec "$CLAUDE" "${ARGS[@]}" < "$PROMPT_FILE"

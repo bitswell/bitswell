@@ -83,6 +83,14 @@ find_identity() {
   echo ""; return 1
 }
 
+# --- dependency helpers ---
+
+# Convert dependency format "agent/slug" to branch name "loom/agent-slug".
+dep_to_branch() {
+  local dep="$1"
+  echo "loom/${dep//\//-}"
+}
+
 # --- dependency checking ---
 
 check_dependencies() {
@@ -91,15 +99,38 @@ check_dependencies() {
   local IFS=','
   for dep in $deps; do
     dep="$(echo "$dep" | xargs)"
-    local dep_agent="${dep%%/*}" completed=false
-    for branch in $(git branch --list "loom/${dep_agent}*" --format='%(refname:short)' 2>/dev/null); do
+    local branch_name
+    branch_name="$(dep_to_branch "$dep")"
+    # Check the exact branch for a COMPLETED status
+    if git rev-parse --verify "$branch_name" >/dev/null 2>&1; then
       local s
-      s="$(git log -1 --format='%(trailers:key=Task-Status,valueonly)' --grep='Task-Status:' "$branch" 2>/dev/null | head -1 | xargs)"
-      [[ "$s" == "COMPLETED" ]] && { completed=true; break; }
-    done
-    [[ "$completed" != "true" ]] && { echo "Dep not met: $dep" >&2; return 1; }
+      s="$(git log -1 --format='%(trailers:key=Task-Status,valueonly)' --grep='Task-Status:' "$branch_name" 2>/dev/null | head -1 | xargs)"
+      [[ "$s" == "COMPLETED" ]] && continue
+    fi
+    echo "Dep not met: $dep (branch: $branch_name)" >&2
+    return 1
   done
   return 0
+}
+
+# --- idempotency ---
+
+lock_file_path() {
+  echo "$MCAGENT_DIR/agents/$1/$2/.dispatch-lock"
+}
+
+is_dispatched() {
+  local lock
+  lock="$(lock_file_path "$1" "$2")"
+  [[ -f "$lock" ]]
+}
+
+write_lock() {
+  local lock pid="$2"
+  lock="$(lock_file_path "$3" "$4")"
+  mkdir -p "$(dirname "$lock")"
+  echo "pid=$pid" > "$lock"
+  echo "dispatched=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$lock"
 }
 
 # --- dispatch ---
@@ -116,6 +147,12 @@ dispatch_agent() {
   echo "  Scope:        $SCOPE"
   echo "  Dependencies: $DEPENDENCIES"
   echo "  Budget:       $BUDGET"
+
+  # Idempotency: skip if already dispatched
+  if is_dispatched "$AGENT_ID" "$ASSIGNMENT_ID"; then
+    echo "  SKIP: already dispatched (lock exists at $(lock_file_path "$AGENT_ID" "$ASSIGNMENT_ID"))"
+    return 0
+  fi
 
   local agent_json worktree identity
   agent_json="$(find_agent_json "$AGENT_ID" "$ASSIGNMENT_ID")" || true
@@ -138,30 +175,62 @@ dispatch_agent() {
   local task_body
   task_body="$(git log -1 --format='%b' "$sha")"
 
-  # Write prompt to temp file for the spawn command
+  # Write prompt to temp file for the spawn command.
+  # Use quoted heredoc to prevent shell expansion of task_body.
   local prompt_file
   prompt_file="$(mktemp)"
-  cat > "$prompt_file" <<PROMPT
-You are agent "$AGENT_ID". Your assignment is "$ASSIGNMENT_ID".
+  trap 'rm -f "$prompt_file"' EXIT
+
+  cat > "$prompt_file" <<'PROMPT'
+You are agent "__AGENT_ID__". Your assignment is "__ASSIGNMENT_ID__".
 Your working directory is this git checkout. Use git commands normally (no -C flags needed).
-Read your identity: $identity
-Read your AGENT.json: $agent_json
+Read your identity: __IDENTITY__
+Read your AGENT.json: __AGENT_JSON__
 Your task (from the assignment commit):
-$task_body
+__TASK_BODY__
 Commit protocol:
-- Every commit: Agent-Id: $AGENT_ID, Session-Id: $agent_session_id
+- Every commit: Agent-Id: __AGENT_ID__, Session-Id: __SESSION_ID__
 - First commit: Task-Status: IMPLEMENTING
 - Final commit: Task-Status: COMPLETED with Key-Finding trailer(s)
 Build it. No ceremony.
 PROMPT
 
+  # Inject controlled variables into the template via sed.
+  # task_body uses a temp file approach to handle multiline + special chars safely.
+  sed -i "s|__AGENT_ID__|${AGENT_ID}|g" "$prompt_file"
+  sed -i "s|__ASSIGNMENT_ID__|${ASSIGNMENT_ID}|g" "$prompt_file"
+  sed -i "s|__IDENTITY__|${identity}|g" "$prompt_file"
+  sed -i "s|__AGENT_JSON__|${agent_json}|g" "$prompt_file"
+  sed -i "s|__SESSION_ID__|${agent_session_id}|g" "$prompt_file"
+
+  # Replace __TASK_BODY__ with the actual task body.
+  # Use a temp file + awk to handle multiline content and special characters.
+  local body_file
+  body_file="$(mktemp)"
+  printf '%s' "$task_body" > "$body_file"
+  awk -v placeholder="__TASK_BODY__" -v bodyfile="$body_file" '
+    $0 ~ placeholder {
+      while ((getline line < bodyfile) > 0) print line
+      close(bodyfile)
+      next
+    }
+    { print }
+  ' "$prompt_file" > "${prompt_file}.tmp"
+  mv "${prompt_file}.tmp" "$prompt_file"
+  rm -f "$body_file"
+
   echo "  Prompt: $prompt_file"
   echo "  Spawning via: $SPAWN_CMD"
   echo "  PWD: $worktree"
 
-  # cd into the worktree before spawning — agent sees it as PWD
+  # cd into the worktree before spawning -- agent sees it as PWD
   (cd "$worktree" && "$SPAWN_CMD" "$prompt_file") &
-  echo "  PID: $!"
+  local spawn_pid=$!
+  echo "  PID: $spawn_pid"
+
+  # Write lock file with PID to prevent double-dispatch
+  write_lock "$prompt_file" "$spawn_pid" "$AGENT_ID" "$ASSIGNMENT_ID"
+
   echo "  Agent $AGENT_ID dispatched."
 }
 
