@@ -1,0 +1,13 @@
+{
+  "agent_id": "plan-v14",
+  "session_id": "35425016-7290-4c4d-8bd0-f8bc06dae00e",
+  "protocol_version": "loom/1",
+  "context_window_tokens": 200000,
+  "token_budget": 50000,
+  "dependencies": [],
+  "scope": {
+    "paths_allowed": ["tests/loom-eval/plans/plan-v14.md"],
+    "paths_denied": []
+  },
+  "timeout_seconds": 300
+}
