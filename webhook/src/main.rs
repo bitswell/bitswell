@@ -35,13 +35,12 @@ async fn main() {
 
     let webhook_secret =
         std::env::var("WEBHOOK_SECRET").expect("WEBHOOK_SECRET env var required");
-    let trigger_id = std::env::var("TRIGGER_ID").expect("TRIGGER_ID env var required");
-    let api_key = std::env::var("CLAUDE_API_KEY").expect("CLAUDE_API_KEY env var required");
+    let repo_path = std::env::var("REPO_PATH").unwrap_or_else(|_| "/repo".into());
     let port = std::env::var("PORT").unwrap_or_else(|_| "3000".into());
 
     let state = Arc::new(AppState {
         webhook_secret,
-        trigger: TriggerClient::new(trigger_id, api_key),
+        trigger: TriggerClient::new(repo_path.into()),
         dispatch_semaphore: Semaphore::new(MAX_CONCURRENT_DISPATCHES),
     });
 

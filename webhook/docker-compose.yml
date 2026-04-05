@@ -4,6 +4,11 @@ services:
     env_file: .env
     ports:
       - "3000:3000"
+    volumes:
+      - ~/.claude:/root/.claude:ro
+      - ..:/repo:ro
+    environment:
+      - REPO_PATH=/repo
     restart: unless-stopped
 
   smee:

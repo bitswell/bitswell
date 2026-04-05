@@ -5,10 +5,10 @@ COPY Cargo.toml Cargo.lock* ./
 COPY src/ src/
 RUN cargo build --release
 
-FROM alpine:3.21
-RUN apk add --no-cache ca-certificates wget
+FROM node:22-alpine
+RUN apk add --no-cache ca-certificates wget git
+RUN npm install -g @anthropic-ai/claude-code
 COPY --from=builder /build/target/release/bitswell-webhook /usr/local/bin/
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:3000/health || exit 1
 EXPOSE 3000
-USER nobody
 CMD ["bitswell-webhook"]
