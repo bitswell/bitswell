@@ -1,6 +1,6 @@
 # `.mcagent/` Directory Specification
 
-**Version**: 1.0.0-draft | **Protocol**: `loom/1` | **Status**: Draft
+**Version**: 2.0.0-draft | **Protocol**: `loom/2` | **Status**: Draft
 
 ---
 
@@ -66,7 +66,7 @@ Lives inside the assignment directory, **outside** the worktree. This is the cri
   "agent_id": "<agent-name>",
   "assignment_id": "<sequence>-<slug>",
   "session_id": "<uuid>",
-  "protocol_version": "loom/1",
+  "protocol_version": "loom/2",
   "repo": "<org>/<repo>",
   "base_ref": "<branch-or-sha>",
   "context_window_tokens": 1000000,
@@ -91,7 +91,7 @@ Lives inside the assignment directory, **outside** the worktree. This is the cri
 | `agent_id` | string | yes | Kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`), unique within the repository |
 | `assignment_id` | string | yes | Matches the assignment directory name |
 | `session_id` | string | yes | UUID v4, unique per agent invocation |
-| `protocol_version` | string | yes | Literal `"loom/1"` |
+| `protocol_version` | string | yes | Literal `"loom/2"` |
 | `repo` | string | yes | Target repository in `<org>/<repo>` format |
 | `base_ref` | string | yes | Branch name or commit SHA the worktree was created from |
 | `context_window_tokens` | integer | yes | Positive integer |
@@ -125,7 +125,7 @@ All orchestrator commits use `Agent-Id: bitswell`. There is no separate "orchest
 {
   "agent_id": "bitswell",
   "role": "orchestrator",
-  "protocol_version": "loom/1",
+  "protocol_version": "loom/2",
   "scope": {
     "paths_allowed": [".mcagent/**"],
     "paths_denied": []
@@ -307,4 +307,4 @@ An implementation conforms to this spec if:
 
 ---
 
-*End of `.mcagent/` directory specification — loom/1 1.0.0-draft.*
+*End of `.mcagent/` directory specification — loom/2 2.0.0-draft.*
