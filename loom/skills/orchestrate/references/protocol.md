@@ -26,15 +26,20 @@ The commit schema and trailer vocabulary are in `schemas.md`. Agent conformance 
 An agent is always in exactly one state. Transitions are triggered by the agent or the orchestrator as noted.
 
 ```
-                      +-----------+
-         assign ----->|IMPLEMENTING|-------> FAILED
-                      +-----------+          ^
-                        |       |            |
-                        |       +-> BLOCKED -+
-                        v            |
-                   +-----------+     |
-                   | COMPLETED |<----+ (via IMPLEMENTING)
-                   +-----------+
+                 +----------+
+  assign ------->| ASSIGNED |
+                 +----------+
+                      |
+                      v
+                 +-----------+
+                 |IMPLEMENTING|-------> FAILED
+                 +-----------+          ^
+                   |       |            |
+                   |       +-> BLOCKED -+ (orchestrator timeout)
+                   v            |
+              +-----------+     |
+              | COMPLETED |<----+ (via IMPLEMENTING)
+              +-----------+
 ```
 
 ### Transition table
@@ -47,7 +52,7 @@ An agent is always in exactly one state. Transitions are triggered by the agent 
 | IMPLEMENTING | BLOCKED | agent | Commit has `Task-Status: BLOCKED` and `Blocked-Reason` |
 | IMPLEMENTING | FAILED | agent or orchestrator | Commit has `Task-Status: FAILED`, `Error-Category`, `Error-Retryable` |
 | BLOCKED | IMPLEMENTING | orchestrator resolves blocker | Orchestrator commits context update |
-| BLOCKED | FAILED | orchestrator timeout | Heartbeat age > `timeout_seconds` |
+| BLOCKED | FAILED | orchestrator timeout (not agent-initiated) | Heartbeat age > `timeout_seconds` |
 | COMPLETED | (terminal) | -- | -- |
 | FAILED | (terminal) | -- | -- |
 

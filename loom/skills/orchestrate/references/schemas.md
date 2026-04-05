@@ -142,6 +142,7 @@ All trailers follow `git-interpret-trailers(1)` syntax.
 | `Session-Id` | yes |
 | `Task-Status` | yes — value `BLOCKED` |
 | `Blocked-Reason` | yes |
+| `Heartbeat` | yes |
 
 ### 4.5 FAILED (agent writes)
 
@@ -311,7 +312,7 @@ done
 10. The agent's first commit MUST have `Task-Status: IMPLEMENTING`.
 11. A branch MUST NOT have more than one `COMPLETED` or `FAILED` commit. These are terminal states.
 12. After a terminal state, no further commits with `Task-Status` are permitted. Orchestrator post-terminal commits use `chore(loom):` with no `Task-Status`.
-13. All agent commits on the branch MUST share the same `Session-Id`. The `ASSIGNED` commit carries bitswell's session ID.
+13. All commits from a single agent invocation MUST share the same `Session-Id`. The `ASSIGNED` commit carries bitswell's session ID. A new agent invocation resuming a BLOCKED branch uses a new `Session-Id`.
 14. `BLOCKED` is non-terminal. An agent MAY transition from `BLOCKED` back to `IMPLEMENTING`.
 
 ### 7.3 State machine
@@ -330,14 +331,14 @@ Valid transitions:
 - `IMPLEMENTING` -> `COMPLETED` (agent finishes)
 - `IMPLEMENTING` -> `BLOCKED` (agent cannot proceed)
 - `IMPLEMENTING` -> `FAILED` (unrecoverable error)
-- `BLOCKED` -> `IMPLEMENTING` (blocker resolved)
+- `BLOCKED` -> `IMPLEMENTING` (blocker resolved, agent resumes)
+- `BLOCKED` -> `FAILED` (orchestrator timeout only — not agent-initiated)
 
 Invalid transitions (MUST reject):
 - Any state -> `ASSIGNED` (assignment happens once)
 - `COMPLETED` -> any state (terminal)
 - `FAILED` -> any state (terminal)
 - `BLOCKED` -> `COMPLETED` (must resume `IMPLEMENTING` first)
-- `BLOCKED` -> `FAILED` (must resume `IMPLEMENTING` first)
 
 ---
 

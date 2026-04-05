@@ -123,11 +123,11 @@ git log -1 --format='%(trailers:key=Task-Status,valueonly)' \
   --grep='Task-Status:' loom/ratchet-plugin-scaffold
 # → COMPLETED
 
-# Merge into workspace
+# Merge into workspace, pausing before the merge commit
 git checkout main
-git merge --no-ff loom/ratchet-plugin-scaffold
+git merge --no-ff --no-commit loom/ratchet-plugin-scaffold
 
-# Commit the integration (orchestrator post-merge)
+# Commit the integration with orchestrator trailers
 git commit -m "$(cat <<'EOF'
 chore(loom): integrate ratchet/plugin-scaffold
 
@@ -139,24 +139,29 @@ EOF
 
 ---
 
-## 5. Retry a Failed Agent
+## 5. Retry a Resource-Limited Agent
+
+An agent exits BLOCKED due to token budget exhaustion. The orchestrator creates a new branch with a higher budget.
 
 ```bash
-# Check failure
-git log -1 --format='%(trailers:key=Error-Category,valueonly)%n%(trailers:key=Error-Retryable,valueonly)' \
+# Check state — agent exited BLOCKED with resource_limit
+git log -1 --format='%(trailers:key=Task-Status,valueonly)' \
+  --grep='Task-Status:' loom/ratchet-plugin-scaffold
+# → BLOCKED
+
+git log -1 --format='%(trailers:key=Blocked-Reason,valueonly)' \
   loom/ratchet-plugin-scaffold
 # → resource_limit
-# → true
 
-# Create a new branch for the retry (do NOT reuse the failed branch)
+# Create a new branch for the retry (do NOT reuse the blocked branch)
 git checkout main
 git checkout -b loom/ratchet-plugin-scaffold-retry
 
 git commit --allow-empty -m "$(cat <<'EOF'
 task(ratchet): scaffold loom plugin (retry -- resource_limit)
 
-Same task as plugin-scaffold. Previous attempt hit token budget.
-Increased budget to 200000.
+Same task as plugin-scaffold. Previous attempt exited BLOCKED due to
+token budget. Increased budget to 200000.
 
 ...
 
