@@ -266,7 +266,7 @@ The orchestrator:
 1. Creates the assignment directory: `.mcagent/agents/<name>/<sequence>-<slug>/`
 2. Writes AGENT.json into the assignment directory.
 3. Creates a git worktree at `<assignment>/worktree/` from the target repo's `base_ref`.
-4. Commits the `Task-Status: ASSIGNED` message to the agent's branch (see schemas.md Section 5.3).
+4. Commits the `Task-Status: ASSIGNED` message to the agent's branch (see schemas.md Section 5.1).
 5. Spawns the agent (sync) or commits a dispatch trigger (push-event).
 
 ### 6.2 Agent Execution
