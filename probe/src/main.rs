@@ -208,11 +208,7 @@ fn probe(args: &Args) -> Result<Capabilities, String> {
         }
     }
 
-    let status = child.wait().map_err(|e| format!("Wait error: {e}"))?;
-    if !status.success() {
-        // Non-zero exit is okay for probing — we still got the init event.
-        // Only fail if we got no init at all.
-    }
+    child.wait().map_err(|e| format!("Wait error: {e}"))?;
 
     let init = init.ok_or("No init event received from Claude CLI")?;
 

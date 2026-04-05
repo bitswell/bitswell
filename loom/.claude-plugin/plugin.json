@@ -1,0 +1,9 @@
+{
+  "name": "loom",
+  "version": "2.0.0",
+  "description": "LOOM — Lifecycle-Orchestrated Operation Model. Coordinate AI agents through git worktrees and commit-based protocol.",
+  "author": { "name": "bitswell" },
+  "repository": "https://github.com/bitswell/bitswell",
+  "license": "MIT",
+  "keywords": ["loom", "agents", "orchestration", "worktree", "multi-agent"]
+}
