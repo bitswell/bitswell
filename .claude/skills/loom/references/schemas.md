@@ -208,8 +208,7 @@ All trailers follow `git-interpret-trailers(1)` syntax.
 ```
 task(<agent-id>): <short task description>
 
-<Full task description. This replaces TASK.md.
-Include objective, context, acceptance criteria.>
+<Full task description. Include objective, context, acceptance criteria.>
 
 Agent-Id: bitswell
 Session-Id: <bitswell-session-id>
