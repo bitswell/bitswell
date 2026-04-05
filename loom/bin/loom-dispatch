@@ -20,7 +20,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-GIT_DIR="$(git rev-parse --git-dir)"
+GIT_DIR="$(git rev-parse --git-common-dir)"
 LOOM_DIR="$GIT_DIR/loom"
 SPAWN_CMD="${LOOM_SPAWN_CMD:-$SCRIPT_DIR/loom-spawn}"
 
@@ -158,7 +158,7 @@ dispatch_agent() {
 
   local prompt_file
   prompt_file="$(mktemp)"
-  trap 'rm -f "$prompt_file"' EXIT
+  # No trap here — loom-spawn owns the prompt file from this point and cleans it up.
 
   cat > "$prompt_file" <<'PROMPT'
 You are __AGENT_ID__. Your assignment is __ASSIGNMENT_ID__.
