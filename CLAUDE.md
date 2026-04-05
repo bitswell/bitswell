@@ -29,4 +29,3 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 - Bitsweller files issues as commits on the `bitsweller` branch.
 - Tasks live in `tasks/` (unassigned, assigned, done).
 - Agent identities live in `agents/<name>/identity.md`. Not all agents have discovered identities yet — bitsweller and bitswelt are pending.
-- LOOM orchestration is available via plugin: `claude --plugin-dir ./loom`
