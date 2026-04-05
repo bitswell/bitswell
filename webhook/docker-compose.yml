@@ -11,8 +11,22 @@ services:
       - REPO_PATH=/repo
     restart: unless-stopped
 
+  gitea:
+    image: gitea/gitea:latest
+    ports:
+      - "3001:3000"
+      - "2222:22"
+    volumes:
+      - gitea-data:/data
+    environment:
+      - GITEA__webhook__ALLOWED_HOST_LIST=webhook
+    profiles: [dev]
+
   smee:
     image: node:22-alpine
     command: npx smee-client --url ${SMEE_URL} --target http://webhook:3000/webhook
-    profiles: [dev]
+    profiles: [smee]
     depends_on: [webhook]
+
+volumes:
+  gitea-data:

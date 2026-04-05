@@ -18,8 +18,31 @@ use crate::trigger::TriggerClient;
 const MAX_BODY_SIZE: usize = 256 * 1024; // 256 KB
 const MAX_CONCURRENT_DISPATCHES: usize = 10;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Forge {
+    GitHub,
+    Gitea,
+}
+
+impl Forge {
+    fn signature_header(self) -> &'static str {
+        match self {
+            Forge::GitHub => "x-hub-signature-256",
+            Forge::Gitea => "x-gitea-signature",
+        }
+    }
+
+    fn event_header(self) -> &'static str {
+        match self {
+            Forge::GitHub => "x-github-event",
+            Forge::Gitea => "x-gitea-event",
+        }
+    }
+}
+
 struct AppState {
     webhook_secret: String,
+    forge: Forge,
     trigger: TriggerClient,
     dispatch_semaphore: Semaphore,
 }
@@ -38,8 +61,16 @@ async fn main() {
     let repo_path = std::env::var("REPO_PATH").unwrap_or_else(|_| "/repo".into());
     let port = std::env::var("PORT").unwrap_or_else(|_| "3000".into());
 
+    let forge = match std::env::var("FORGE").unwrap_or_else(|_| "github".into()).as_str() {
+        "gitea" => Forge::Gitea,
+        _ => Forge::GitHub,
+    };
+
+    tracing::info!(forge = ?forge, "configured forge");
+
     let state = Arc::new(AppState {
         webhook_secret,
+        forge,
         trigger: TriggerClient::new(repo_path.into()),
         dispatch_semaphore: Semaphore::new(MAX_CONCURRENT_DISPATCHES),
     });
@@ -101,38 +132,40 @@ async fn webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
-    // Extract signature header
+    let forge = state.forge;
+
+    // Extract signature header (forge-specific)
     let signature = match headers
-        .get("x-hub-signature-256")
+        .get(forge.signature_header())
         .and_then(|v| v.to_str().ok())
     {
         Some(s) => s,
         None => {
-            tracing::warn!("missing x-hub-signature-256 header");
+            tracing::warn!(header = forge.signature_header(), "missing signature header");
             return StatusCode::UNAUTHORIZED;
         }
     };
 
     // Verify HMAC
-    if !signature::verify(signature, &state.webhook_secret, &body) {
+    if !signature::verify(signature, &state.webhook_secret, &body, forge) {
         tracing::warn!("invalid webhook signature");
         return StatusCode::UNAUTHORIZED;
     }
 
-    // After signature verification, always return 200 to GitHub.
-    // Parse errors are logged internally — don't trigger GitHub retries.
+    // After signature verification, always return 200.
+    // Parse errors are logged internally — don't trigger retries.
     let event_type = match headers
-        .get("x-github-event")
+        .get(forge.event_header())
         .and_then(|v| v.to_str().ok())
     {
         Some(e) => e.to_string(),
         None => {
-            tracing::warn!("missing x-github-event header");
+            tracing::warn!(header = forge.event_header(), "missing event header");
             return StatusCode::OK;
         }
     };
 
-    tracing::info!(event = %event_type, "received webhook event");
+    tracing::info!(event = %event_type, ?forge, "received webhook event");
 
     // Dispatch to handler based on event type.
     // Handlers run in a spawned task with bounded concurrency.

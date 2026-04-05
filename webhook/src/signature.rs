@@ -1,16 +1,21 @@
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
+use crate::Forge;
+
 type HmacSha256 = Hmac<Sha256>;
 
-/// Verify GitHub webhook HMAC-SHA256 signature.
+/// Verify webhook HMAC-SHA256 signature.
 ///
-/// `signature` is the `x-hub-signature-256` header value (e.g. "sha256=abc123...").
-/// `secret` is the webhook secret. `body` is the raw request body.
-pub fn verify(signature: &str, secret: &str, body: &[u8]) -> bool {
-    let hex_sig = match signature.strip_prefix("sha256=") {
-        Some(h) => h,
-        None => return false,
+/// GitHub sends `sha256=<hex>` in `x-hub-signature-256`.
+/// Gitea sends raw `<hex>` in `x-gitea-signature`.
+pub fn verify(signature: &str, secret: &str, body: &[u8], forge: Forge) -> bool {
+    let hex_sig = match forge {
+        Forge::GitHub => match signature.strip_prefix("sha256=") {
+            Some(h) => h,
+            None => return false,
+        },
+        Forge::Gitea => signature, // raw hex, no prefix
     };
 
     let sig_bytes = match hex::decode(hex_sig) {
@@ -31,23 +36,40 @@ pub fn verify(signature: &str, secret: &str, body: &[u8]) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn valid_signature() {
-        let secret = "test-secret";
-        let body = b"hello world";
+    fn make_sig(secret: &str, body: &[u8]) -> String {
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
         mac.update(body);
-        let sig = hex::encode(mac.finalize().into_bytes());
-        assert!(verify(&format!("sha256={sig}"), secret, body));
+        hex::encode(mac.finalize().into_bytes())
     }
 
     #[test]
-    fn invalid_signature() {
-        assert!(!verify("sha256=deadbeef", "secret", b"body"));
+    fn github_valid_signature() {
+        let secret = "test-secret";
+        let body = b"hello world";
+        let sig = make_sig(secret, body);
+        assert!(verify(&format!("sha256={sig}"), secret, body, Forge::GitHub));
     }
 
     #[test]
-    fn missing_prefix() {
-        assert!(!verify("deadbeef", "secret", b"body"));
+    fn github_invalid_signature() {
+        assert!(!verify("sha256=deadbeef", "secret", b"body", Forge::GitHub));
+    }
+
+    #[test]
+    fn github_missing_prefix() {
+        assert!(!verify("deadbeef", "secret", b"body", Forge::GitHub));
+    }
+
+    #[test]
+    fn gitea_valid_signature() {
+        let secret = "test-secret";
+        let body = b"hello world";
+        let sig = make_sig(secret, body);
+        assert!(verify(&sig, secret, body, Forge::Gitea));
+    }
+
+    #[test]
+    fn gitea_invalid_signature() {
+        assert!(!verify("deadbeef", "secret", b"body", Forge::Gitea));
     }
 }
