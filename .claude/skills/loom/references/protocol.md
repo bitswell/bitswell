@@ -1,6 +1,6 @@
 # LOOM Protocol Reference
 
-**Version**: 1.0.0-draft | **Protocol**: `loom/1` | **Status**: Draft
+**Version**: 2.0.0-draft | **Protocol**: `loom/2` | **Status**: Draft
 
 LOOM defines how AI agents coordinate through version control. Agents work in isolated git worktrees; an orchestrator serializes integration into a shared workspace. Key words: MUST, MUST NOT, SHOULD, MAY per RFC 2119.
 
@@ -174,4 +174,4 @@ Agents MUST reserve at least 10% of `token_budget` for the final commit (status 
 
 ---
 
-*End of LOOM Protocol Reference v1.0.0-draft.*
+*End of LOOM Protocol Reference v2.0.0-draft.*
