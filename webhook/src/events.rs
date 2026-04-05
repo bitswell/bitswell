@@ -1,7 +1,14 @@
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde::Deserialize;
 
-use crate::trailers::is_assigned_commit;
+use crate::trailers::parse_assignment;
 use crate::trigger::TriggerClient;
+
+/// Validates loom branch names: `loom/` followed by kebab-case segments.
+static LOOM_BRANCH_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^loom/[a-z0-9]+(-[a-z0-9]+)*$").unwrap());
 
 // --- Push event payload (subset) ---
 
@@ -69,6 +76,12 @@ pub async fn handle_push(event: PushEvent, trigger: &TriggerClient) -> usize {
         return 0;
     }
 
+    // Validate branch name against strict pattern to prevent injection
+    if !LOOM_BRANCH_RE.is_match(branch) {
+        tracing::warn!(branch, "rejected loom branch with invalid name");
+        return 0;
+    }
+
     let mut dispatched = 0;
     for commit in &event.commits {
         // Validate commit SHA is hex
@@ -77,9 +90,15 @@ pub async fn handle_push(event: PushEvent, trigger: &TriggerClient) -> usize {
             continue;
         }
 
-        if is_assigned_commit(&commit.message) {
-            tracing::info!(sha = %commit.id, branch, "ASSIGNED commit detected, dispatching");
-            match trigger.dispatch_push(&commit.id, branch).await {
+        if let Some(assignment) = parse_assignment(&commit.message) {
+            tracing::info!(
+                sha = %commit.id,
+                branch,
+                assigned_to = %assignment.assigned_to,
+                assignment_id = %assignment.assignment,
+                "ASSIGNED commit detected, dispatching"
+            );
+            match trigger.dispatch_push(&commit.id, branch, &assignment).await {
                 Ok(()) => dispatched += 1,
                 Err(e) => tracing::error!(sha = %commit.id, error = %e, "dispatch failed"),
             }
@@ -126,5 +145,27 @@ pub async fn handle_issue_comment(event: IssueCommentEvent, trigger: &TriggerCli
         .await
     {
         tracing::error!(issue = event.issue.number, error = %e, "comment dispatch failed");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_loom_branches() {
+        assert!(LOOM_BRANCH_RE.is_match("loom/ratchet-webhook-server"));
+        assert!(LOOM_BRANCH_RE.is_match("loom/moss-fix"));
+        assert!(LOOM_BRANCH_RE.is_match("loom/a1"));
+    }
+
+    #[test]
+    fn invalid_loom_branches() {
+        assert!(!LOOM_BRANCH_RE.is_match("loom/"));
+        assert!(!LOOM_BRANCH_RE.is_match("loom/UPPERCASE"));
+        assert!(!LOOM_BRANCH_RE.is_match("loom/has spaces"));
+        assert!(!LOOM_BRANCH_RE.is_match("loom/; rm -rf /"));
+        assert!(!LOOM_BRANCH_RE.is_match("loom/--flag-injection"));
+        assert!(!LOOM_BRANCH_RE.is_match("loom/path/../traversal"));
     }
 }
