@@ -282,7 +282,7 @@ The agent:
 
 On completion:
 1. The agent's final commit carries `Task-Status: COMPLETED` with required trailers (`Files-Changed`, at least one `Key-Finding`).
-2. The orchestrator integrates the agent's branch into the target repo (see protocol.md Section 5.3).
+2. The orchestrator integrates the agent's branch into the target repo (see protocol.md Section 3.3).
 3. The worktree MAY be removed. The assignment directory (with AGENT.json) is retained for audit.
 4. The agent's branch is retained per retention policy (default 30 days).
 
