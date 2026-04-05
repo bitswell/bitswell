@@ -28,4 +28,4 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 - Never use the git commit command after a task is finished — gitbutler handles branch placement.
 - Bitsweller files issues as commits on the `bitsweller` branch.
 - Tasks live in `tasks/` (unassigned, assigned, done).
-- Agent identities live in `agents/<name>/identity.md`. Not all agents have discovered identities yet — bitswell, bitsweller, and bitswelt are pending.
+- Agent identities live in `agents/<name>/identity.md`. Not all agents have discovered identities yet — bitsweller and bitswelt are pending.
