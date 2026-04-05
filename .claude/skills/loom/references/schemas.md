@@ -1,6 +1,6 @@
 # LOOM Schemas Reference
 
-**Version**: 1.0.0-draft | **Protocol**: `loom/1` | **Status**: Draft
+**Version**: 2.0.0-draft | **Protocol**: `loom/2` | **Status**: Draft
 
 Defines AGENT.json schema, commit message format, branch naming, commit-based protocol (trailer vocabulary, state requirements, templates, extraction queries, validation rules).
 
@@ -17,7 +17,7 @@ Written by the orchestrator at assignment creation. Lives at `.mcagent/agents/<n
   "agent_id": "<agent-name>",
   "assignment_id": "<sequence>-<slug>",
   "session_id": "<uuid-v4>",
-  "protocol_version": "loom/1",
+  "protocol_version": "loom/2",
   "repo": "<org>/<repo>",
   "base_ref": "<branch-or-sha>",
   "context_window_tokens": 200000,
@@ -40,7 +40,7 @@ Written by the orchestrator at assignment creation. Lives at `.mcagent/agents/<n
 | `agent_id` | string | yes | Kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`) |
 | `assignment_id` | string | yes | Matches the assignment directory name |
 | `session_id` | string | yes | UUID v4, unique per invocation |
-| `protocol_version` | string | yes | Literal `"loom/1"` |
+| `protocol_version` | string | yes | Literal `"loom/2"` |
 | `repo` | string | yes | Target repo in `<org>/<repo>` format |
 | `base_ref` | string | yes | Branch or commit SHA |
 | `context_window_tokens` | integer | yes | Positive integer |
@@ -390,4 +390,4 @@ Invalid transitions (MUST reject):
 
 ---
 
-*End of LOOM Schemas Reference v1.0.0-draft.*
+*End of LOOM Schemas Reference v2.0.0-draft.*
