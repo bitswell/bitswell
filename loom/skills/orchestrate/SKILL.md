@@ -143,7 +143,7 @@ After an agent's branch shows `Task-Status: COMPLETED`:
 
 ```bash
 git checkout main
-git merge --no-ff loom/<agent>-<slug>
+git merge --no-ff --no-commit loom/<agent>-<slug>
 # Run validation
 # If OK: commit with Agent-Id: bitswell, Session-Id: <session>
 ```
@@ -154,7 +154,10 @@ Post-integration, the agent's branch is retained (minimum 30 days).
 
 ## 6. Handle Blocked or Failed Agents
 
-**BLOCKED**: Wait for the blocker to resolve, then the agent resumes IMPLEMENTING.
+**BLOCKED**: Triage by `Blocked-Reason`:
+
+- **dependency blocker** — wait for the dependency branch (`loom/<agent>-<slug>`) to reach `COMPLETED`, then the agent resumes `IMPLEMENTING`.
+- **resource_limit** — waiting does nothing; the token budget is exhausted. Create a new branch with a higher `Budget` and re-dispatch the agent from `ASSIGNED`.
 
 **FAILED**: Read `Error-Category` and `Error-Retryable` from the commit. If retryable, spawn a new agent on a new branch (do not reuse the failed branch).
 

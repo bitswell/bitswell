@@ -321,9 +321,9 @@ done
 ASSIGNED --> IMPLEMENTING --> COMPLETED
                   |     ^
                   |     |
-                  +---> BLOCKED
-                  |
-                  +---> FAILED
+                  +---> BLOCKED --+
+                  |               |
+                  +---> FAILED <--+
 ```
 
 Valid transitions:
