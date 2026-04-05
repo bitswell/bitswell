@@ -1,0 +1,65 @@
+{
+  "description": "LOOM worktree lifecycle hooks for Claude Code",
+  "version": "1.0.0",
+  "protocol": "loom/1",
+  "_notes": {
+    "installation": "Merge the 'hooks' block below into .claude/settings.json. Replace ${CLAUDE_PLUGIN_ROOT} with the absolute path to this repo's root.",
+    "event_mapping": {
+      "WorktreeCreate": "Fires before git worktree creation. Blockable: exit 2 aborts creation.",
+      "WorktreeRemove": "Fires after git worktree removal. Non-blockable.",
+      "SubagentStart": "Fires when a subagent is spawned. Non-blockable.",
+      "SubagentStop": "Fires when a subagent stops. Non-blockable."
+    },
+    "graceful_noop": "All scripts exit 0 immediately for non-loom/* branches."
+  },
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/loom/scripts/worktree-create.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/loom/scripts/worktree-remove.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/loom/scripts/agent-start.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/loom/scripts/agent-stop.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
