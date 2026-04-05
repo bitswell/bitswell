@@ -12,10 +12,12 @@ LOOM is a Claude Code plugin that provides multi-agent orchestration primitives.
 claude --plugin-dir ./loom
 ```
 
-## What it provides
+## Structure
 
-| Directory | Purpose |
-|-----------|---------|
+Currently a scaffold. Directories are present but empty — content is added as the plugin is built out.
+
+| Directory | Intended purpose |
+|-----------|-----------------|
 | `agents/` | Worker agent definitions (e.g. ratchet, moss, sable) |
 | `skills/` | Orchestrator skills for dispatching and coordinating agents |
 | `hooks/` | Lifecycle hooks — pre/post task, on commit, on review |
