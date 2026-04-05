@@ -101,22 +101,27 @@ check_dependencies() {
 
 # --- idempotency ---
 
-lock_file_path() {
-  echo "$LOOM_DIR/locks/$1/$2.lock"
+lock_dir_path() {
+  echo "$LOOM_DIR/locks/$1/$2.lock.d"
 }
 
 is_dispatched() {
-  local lock
-  lock="$(lock_file_path "$1" "$2")"
-  [[ -f "$lock" ]]
+  [[ -d "$(lock_dir_path "$1" "$2")" ]]
 }
 
-write_lock() {
+# Atomically claim a lock directory. Returns 1 if already claimed.
+# mkdir(2) is atomic on all POSIX filesystems; file write is not.
+try_lock() {
+  local lock_dir
+  lock_dir="$(lock_dir_path "$1" "$2")"
+  mkdir -p "$LOOM_DIR/locks/$1"
+  mkdir "$lock_dir" 2>/dev/null
+}
+
+write_lock_info() {
   local pid="$1" agent="$2" assignment="$3"
-  local lock
-  lock="$(lock_file_path "$agent" "$assignment")"
-  mkdir -p "$(dirname "$lock")"
-  printf 'pid=%s\ndispatched=%s\n' "$pid" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lock"
+  printf 'pid=%s\ndispatched=%s\n' "$pid" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$(lock_dir_path "$agent" "$assignment")/info"
 }
 
 # --- dispatch ---
@@ -139,7 +144,7 @@ dispatch_agent() {
   [[ -n "$worktree" ]] && echo "  Worktree:     $worktree" || echo "  Worktree:     (not found)"
 
   if is_dispatched "$AGENT_ID" "$ASSIGNMENT_ID"; then
-    echo "  SKIP: already dispatched (lock: $(lock_file_path "$AGENT_ID" "$ASSIGNMENT_ID"))"
+    echo "  SKIP: already dispatched (lock: $(lock_dir_path "$AGENT_ID" "$ASSIGNMENT_ID"))"
     return 0
   fi
 
@@ -196,11 +201,17 @@ PROMPT
   echo "  Spawning via: $SPAWN_CMD"
   echo "  PWD: $worktree"
 
+  # Claim lock atomically before spawning. Prevents concurrent double-dispatch.
+  if ! try_lock "$AGENT_ID" "$ASSIGNMENT_ID"; then
+    echo "  SKIP: already dispatched (lock claimed concurrently)"
+    return 0
+  fi
+
   (cd "$worktree" && "$SPAWN_CMD" "$prompt_file") &
   local spawn_pid=$!
   echo "  PID: $spawn_pid"
 
-  write_lock "$spawn_pid" "$AGENT_ID" "$ASSIGNMENT_ID"
+  write_lock_info "$spawn_pid" "$AGENT_ID" "$ASSIGNMENT_ID"
   echo "  Agent $AGENT_ID dispatched."
 }
 
@@ -208,7 +219,7 @@ dispatch_commit() {
   local sha="$1"
   is_assignment_commit "$sha" || { echo "$sha is not ASSIGNED" >&2; return 1; }
   local branch
-  branch="$(git branch --points-at "$sha" --format='%(refname:short)' 2>/dev/null | grep '^loom/' | head -1)" || true
+  branch="$(git branch --contains "$sha" --format='%(refname:short)' 2>/dev/null | grep '^loom/' | head -1)" || true
   dispatch_agent "$sha" "$branch"
 }
 
@@ -222,7 +233,7 @@ case "$MODE" in
   scan)
     echo "Scanning loom/* branches..."
     found=0
-    for branch in $(git branch --list 'loom/*' --format='%(refname:short)' 2>/dev/null); do
+    while read -r branch; do
       s="$(git log -1 --format='%(trailers:key=Task-Status,valueonly)' --grep='Task-Status:' "$branch" 2>/dev/null | head -1 | xargs)"
       if [[ "$s" == "ASSIGNED" ]]; then
         sha="$(git log -1 --format='%H' --grep='Task-Status: ASSIGNED' "$branch" 2>/dev/null)"
@@ -230,7 +241,7 @@ case "$MODE" in
         dispatch_agent "$sha" "$branch" || true
         found=$((found + 1))
       fi
-    done
+    done < <(git branch --list 'loom/*' --format='%(refname:short)' 2>/dev/null)
     [[ "$found" -eq 0 ]] && echo "None found." || echo "Dispatched $found."
     ;;
 esac

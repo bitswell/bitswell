@@ -42,9 +42,6 @@ fi
 if [[ "$EXTRA_ARGS" != *"--dangerously-skip-permissions"* ]]; then
   ARGS+=(--dangerously-skip-permissions)
 fi
-if [[ "$EXTRA_ARGS" != *"--permission-mode"* ]]; then
-  ARGS+=(--permission-mode acceptEdits)
-fi
 
 # Spawn Claude Code with the prompt. Agent runs with tool access.
 exec "$CLAUDE" "${ARGS[@]}" < "$PROMPT_FILE"
