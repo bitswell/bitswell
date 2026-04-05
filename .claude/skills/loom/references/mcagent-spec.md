@@ -1,6 +1,6 @@
 # `.mcagent/` Directory Specification
 
-**Version**: 1.0.0-draft | **Protocol**: `loom/1` | **Status**: Draft
+**Version**: 2.0.0-draft | **Protocol**: `loom/2` | **Status**: Draft
 
 ---
 
@@ -66,7 +66,7 @@ Lives inside the assignment directory, **outside** the worktree. This is the cri
   "agent_id": "<agent-name>",
   "assignment_id": "<sequence>-<slug>",
   "session_id": "<uuid>",
-  "protocol_version": "loom/1",
+  "protocol_version": "loom/2",
   "repo": "<org>/<repo>",
   "base_ref": "<branch-or-sha>",
   "context_window_tokens": 1000000,
@@ -91,7 +91,7 @@ Lives inside the assignment directory, **outside** the worktree. This is the cri
 | `agent_id` | string | yes | Kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`), unique within the repository |
 | `assignment_id` | string | yes | Matches the assignment directory name |
 | `session_id` | string | yes | UUID v4, unique per agent invocation |
-| `protocol_version` | string | yes | Literal `"loom/1"` |
+| `protocol_version` | string | yes | Literal `"loom/2"` |
 | `repo` | string | yes | Target repository in `<org>/<repo>` format |
 | `base_ref` | string | yes | Branch name or commit SHA the worktree was created from |
 | `context_window_tokens` | integer | yes | Positive integer |
@@ -107,7 +107,7 @@ Lives inside the assignment directory, **outside** the worktree. This is the cri
 
 A git worktree created via `git worktree add`. Points to the target repository, branching from `base_ref`.
 
-**The worktree contains ONLY deliverable code.** No TASK.md, no PLAN.md, no STATUS.md, no MEMORY.md, no AGENT.json. These artifacts either live in the assignment directory (AGENT.json) or in commit messages (protocol state).
+**The worktree contains ONLY deliverable code.** No protocol files of any kind. These artifacts either live in the assignment directory (AGENT.json) or in commit messages (protocol state).
 
 The worktree path is always `.mcagent/agents/<name>/<assignment>/worktree/`. Implementations MUST NOT place the worktree elsewhere.
 
@@ -125,7 +125,7 @@ All orchestrator commits use `Agent-Id: bitswell`. There is no separate "orchest
 {
   "agent_id": "bitswell",
   "role": "orchestrator",
-  "protocol_version": "loom/1",
+  "protocol_version": "loom/2",
   "scope": {
     "paths_allowed": [".mcagent/**"],
     "paths_denied": []
@@ -266,7 +266,7 @@ The orchestrator:
 1. Creates the assignment directory: `.mcagent/agents/<name>/<sequence>-<slug>/`
 2. Writes AGENT.json into the assignment directory.
 3. Creates a git worktree at `<assignment>/worktree/` from the target repo's `base_ref`.
-4. Commits the `Task-Status: ASSIGNED` message to the agent's branch (see schemas.md Section 5.3).
+4. Commits the `Task-Status: ASSIGNED` message to the agent's branch (see schemas.md Section 5.1).
 5. Spawns the agent (sync) or commits a dispatch trigger (push-event).
 
 ### 6.2 Agent Execution
@@ -282,7 +282,7 @@ The agent:
 
 On completion:
 1. The agent's final commit carries `Task-Status: COMPLETED` with required trailers (`Files-Changed`, at least one `Key-Finding`).
-2. The orchestrator integrates the agent's branch into the target repo (see protocol.md Section 5.3).
+2. The orchestrator integrates the agent's branch into the target repo (see protocol.md Section 3.3).
 3. The worktree MAY be removed. The assignment directory (with AGENT.json) is retained for audit.
 4. The agent's branch is retained per retention policy (default 30 days).
 
@@ -296,7 +296,7 @@ Completed assignment directories are archived, not deleted. The orchestrator MAY
 
 An implementation conforms to this spec if:
 
-1. **Separation**: AGENT.json is never committed to the agent's code branch. No protocol files (TASK.md, PLAN.md, STATUS.md, MEMORY.md) are present in the worktree.
+1. **Separation**: AGENT.json is never committed to the agent's code branch. No protocol state files of any kind are present in the worktree.
 2. **Identity persistence**: `identity.md` exists before the first assignment and survives after all assignments are cleaned up.
 3. **Assignment isolation**: Each assignment has its own directory, its own AGENT.json, and its own worktree. No sharing.
 4. **Worktree purity**: The worktree contains only files intended for the target repository. `git status` in the worktree shows no protocol artifacts.
@@ -307,4 +307,4 @@ An implementation conforms to this spec if:
 
 ---
 
-*End of `.mcagent/` directory specification — loom/1 1.0.0-draft.*
+*End of `.mcagent/` directory specification — loom/2 2.0.0-draft.*

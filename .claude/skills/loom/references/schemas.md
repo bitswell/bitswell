@@ -1,6 +1,6 @@
 # LOOM Schemas Reference
 
-**Version**: 1.0.0-draft | **Protocol**: `loom/1` | **Status**: Draft
+**Version**: 2.0.0-draft | **Protocol**: `loom/2` | **Status**: Draft
 
 Defines AGENT.json schema, commit message format, branch naming, commit-based protocol (trailer vocabulary, state requirements, templates, extraction queries, validation rules).
 
@@ -17,7 +17,7 @@ Written by the orchestrator at assignment creation. Lives at `.mcagent/agents/<n
   "agent_id": "<agent-name>",
   "assignment_id": "<sequence>-<slug>",
   "session_id": "<uuid-v4>",
-  "protocol_version": "loom/1",
+  "protocol_version": "loom/2",
   "repo": "<org>/<repo>",
   "base_ref": "<branch-or-sha>",
   "context_window_tokens": 200000,
@@ -40,7 +40,7 @@ Written by the orchestrator at assignment creation. Lives at `.mcagent/agents/<n
 | `agent_id` | string | yes | Kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`) |
 | `assignment_id` | string | yes | Matches the assignment directory name |
 | `session_id` | string | yes | UUID v4, unique per invocation |
-| `protocol_version` | string | yes | Literal `"loom/1"` |
+| `protocol_version` | string | yes | Literal `"loom/2"` |
 | `repo` | string | yes | Target repo in `<org>/<repo>` format |
 | `base_ref` | string | yes | Branch or commit SHA |
 | `context_window_tokens` | integer | yes | Positive integer |
@@ -113,7 +113,7 @@ All trailers follow `git-interpret-trailers(1)` syntax.
 | Trailer | Type | Description |
 |---------|------|-------------|
 | `Task-Status` | enum | One of: `ASSIGNED`, `IMPLEMENTING`, `COMPLETED`, `BLOCKED`, `FAILED` |
-| `Heartbeat` | string | ISO-8601 UTC timestamp. SHOULD appear on every commit while agent is running. |
+| `Heartbeat` | string | ISO-8601 UTC timestamp. MUST appear on every commit while agent is running. |
 
 ### 4.3 Assignment trailers (ASSIGNED commits only)
 
@@ -188,6 +188,7 @@ All trailers follow `git-interpret-trailers(1)` syntax.
 | `Session-Id` | yes |
 | `Task-Status` | yes — value `BLOCKED` |
 | `Blocked-Reason` | yes |
+| `Heartbeat` | yes |
 
 ### 5.5 FAILED (agent writes)
 
@@ -208,8 +209,7 @@ All trailers follow `git-interpret-trailers(1)` syntax.
 ```
 task(<agent-id>): <short task description>
 
-<Full task description. This replaces TASK.md.
-Include objective, context, acceptance criteria.>
+<Full task description. Include objective, context, acceptance criteria.>
 
 Agent-Id: bitswell
 Session-Id: <bitswell-session-id>
@@ -369,9 +369,9 @@ done
 ASSIGNED --> IMPLEMENTING --> COMPLETED
                   |     ^
                   |     |
-                  +---> BLOCKED
-                  |
-                  +---> FAILED
+                  +---> BLOCKED -+
+                  |              | (orchestrator timeout)
+                  +---> FAILED <-+
 ```
 
 Valid transitions:
@@ -380,14 +380,14 @@ Valid transitions:
 - `IMPLEMENTING` -> `BLOCKED` (agent cannot proceed)
 - `IMPLEMENTING` -> `FAILED` (unrecoverable error)
 - `BLOCKED` -> `IMPLEMENTING` (blocker resolved)
+- `BLOCKED` -> `FAILED` (orchestrator timeout — orchestrator-written commit only)
 
 Invalid transitions (MUST reject):
 - Any state -> `ASSIGNED` (assignment happens once)
 - `COMPLETED` -> any state (terminal)
 - `FAILED` -> any state (terminal)
 - `BLOCKED` -> `COMPLETED` (must resume `IMPLEMENTING` first)
-- `BLOCKED` -> `FAILED` (must resume `IMPLEMENTING` first)
 
 ---
 
-*End of LOOM Schemas Reference v1.0.0-draft.*
+*End of LOOM Schemas Reference v2.0.0-draft.*
