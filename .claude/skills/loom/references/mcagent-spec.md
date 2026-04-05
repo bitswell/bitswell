@@ -107,7 +107,7 @@ Lives inside the assignment directory, **outside** the worktree. This is the cri
 
 A git worktree created via `git worktree add`. Points to the target repository, branching from `base_ref`.
 
-**The worktree contains ONLY deliverable code.** No TASK.md, no PLAN.md, no STATUS.md, no MEMORY.md, no AGENT.json. These artifacts either live in the assignment directory (AGENT.json) or in commit messages (protocol state).
+**The worktree contains ONLY deliverable code.** No protocol files of any kind. These artifacts either live in the assignment directory (AGENT.json) or in commit messages (protocol state).
 
 The worktree path is always `.mcagent/agents/<name>/<assignment>/worktree/`. Implementations MUST NOT place the worktree elsewhere.
 
@@ -296,7 +296,7 @@ Completed assignment directories are archived, not deleted. The orchestrator MAY
 
 An implementation conforms to this spec if:
 
-1. **Separation**: AGENT.json is never committed to the agent's code branch. No protocol files (TASK.md, PLAN.md, STATUS.md, MEMORY.md) are present in the worktree.
+1. **Separation**: AGENT.json is never committed to the agent's code branch. No protocol state files of any kind are present in the worktree.
 2. **Identity persistence**: `identity.md` exists before the first assignment and survives after all assignments are cleaned up.
 3. **Assignment isolation**: Each assignment has its own directory, its own AGENT.json, and its own worktree. No sharing.
 4. **Worktree purity**: The worktree contains only files intended for the target repository. `git status` in the worktree shows no protocol artifacts.
