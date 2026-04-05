@@ -4,7 +4,7 @@
 # Hook: WorktreeCreate (blockable — exit 2 aborts creation)
 #
 # Validates that loom/* worktrees follow the branch naming convention:
-#   loom/<agent>-<slug>  (regex: ^loom/[a-z0-9]+(-[a-z0-9]+)*$)
+#   loom/<slug>  (regex: ^loom/[a-z0-9]+(-[a-z0-9]+)*$)
 #
 # Non-loom branches are a graceful no-op (exit 0).
 #
@@ -32,9 +32,9 @@ fi
 # Validate against the LOOM branch naming convention
 if ! printf '%s' "$BRANCH" | grep -qE "$LOOM_PATTERN"; then
   printf 'LOOM: Invalid branch name: %s\n' "$BRANCH" >&2
-  printf 'LOOM: Branch must match: loom/<agent>-<slug>\n' >&2
+  printf 'LOOM: Branch must match: loom/<slug>  (lowercase, hyphens only)\n' >&2
   printf 'LOOM: Pattern: %s\n' "$LOOM_PATTERN" >&2
-  printf 'LOOM: Examples: loom/ratchet-pr-1-fix, loom/moss-migrate-auth\n' >&2
+  printf 'LOOM: Examples: loom/pr-6, loom/ratchet-fix, loom/migrate-auth\n' >&2
   exit 2  # Block worktree creation
 fi
 

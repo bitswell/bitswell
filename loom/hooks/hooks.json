@@ -8,7 +8,7 @@
       "WorktreeCreate": "Fires before git worktree creation. Blockable: exit 2 aborts creation.",
       "WorktreeRemove": "Fires after git worktree removal. Non-blockable.",
       "SubagentStart": "Fires when a subagent is spawned. Non-blockable.",
-      "SubagentStop": "Fires when a subagent stops. Blockable: exit 2 blocks completion."
+      "SubagentStop": "Fires when a subagent stops. Non-blockable."
     },
     "graceful_noop": "All scripts exit 0 immediately for non-loom/* branches."
   },

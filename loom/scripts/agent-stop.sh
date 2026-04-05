@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # loom/scripts/agent-stop.sh
 #
-# Hook: SubagentStop (blockable — exit 2 blocks completion)
+# Hook: SubagentStop (non-blockable — always exits 0)
 #
 # Checks that the agent's final commit on its loom/* branch includes a
-# Task-Status trailer. Warns if missing; does not block (exit 0) so normal
+# Task-Status trailer. Warns if missing; does not block so normal
 # operation is never interrupted by a missing trailer.
 #
 # Non-loom branches are a graceful no-op (exit 0).
@@ -41,13 +41,20 @@ printf 'LOOM: SubagentStop: Agent-Id=%s Session-Id=%s branch=%s time=%s\n' \
 
 # Check the final commit on the agent's branch for a Task-Status trailer
 GIT_DIR_ARGS=()
+GIT_REF_ARGS=()
 if [[ -n "$SUB_CWD" ]] && [[ -d "$SUB_CWD" ]]; then
   GIT_DIR_ARGS=(-C "$SUB_CWD")
+else
+  # SUB_CWD unavailable — pass the branch ref explicitly so we don't
+  # silently read HEAD of whatever repo the hook happens to run in
+  GIT_REF_ARGS=("$BRANCH")
 fi
 
+# || true: git log exits 128 on a branch with no commits yet; treat as no trailer
 LAST_STATUS=$(git "${GIT_DIR_ARGS[@]}" log -1 \
   --format='%(trailers:key=Task-Status,valueonly)' \
-  2>/dev/null | head -1 | tr -d '[:space:]')
+  "${GIT_REF_ARGS[@]}" \
+  2>/dev/null | head -1 | tr -d '[:space:]') || true
 
 if [[ -z "$LAST_STATUS" ]]; then
   printf 'LOOM: WARN: Final commit on %s has no Task-Status trailer\n' "$BRANCH" >&2
