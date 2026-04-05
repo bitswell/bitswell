@@ -88,6 +88,7 @@ Scope: <allowed paths, space-separated globs>
 Scope-Denied: <denied paths, omit if none>
 Dependencies: <agent/slug refs, comma-separated, or "none">
 Budget: <integer token budget>
+Worktree-Base: <sha of commit from which the worktree branches>
 ```
 
 The commit body is the task description. The trailers are the config. Together they constitute the full assignment record.
@@ -102,6 +103,7 @@ The commit body is the task description. The trailers are the config. Together t
 | `Scope-Denied` | string | no | Denied paths. Omit if none. Deny takes precedence over allow. |
 | `Dependencies` | string | yes | Comma-separated `<agent>/<slug>` refs, or `"none"` |
 | `Budget` | integer | yes | Token budget for this assignment |
+| `Worktree-Base` | string (SHA) | yes | Commit SHA from which the worktree branches. Required for deterministic re-dispatch. |
 
 ### 4.3 Reading Assignment Config
 
@@ -117,6 +119,7 @@ git log -1 --format='%(trailers:key=Assignment,valueonly)' <sha>
 git log -1 --format='%(trailers:key=Scope,valueonly)' <sha>
 git log -1 --format='%(trailers:key=Budget,valueonly)' <sha>
 git log -1 --format='%(trailers:key=Dependencies,valueonly)' <sha>
+git log -1 --format='%(trailers:key=Worktree-Base,valueonly)' <sha>
 
 # Task description (commit body)
 git log -1 --format='%b' <sha>
@@ -134,7 +137,16 @@ git log -1 \
   loom/<agent>-<slug>
 ```
 
-Valid states: `ASSIGNED`, `IMPLEMENTING`, `COMPLETED`, `BLOCKED`, `FAILED`.
+Valid states: `ASSIGNED`, `DISPATCHING`, `IMPLEMENTING`, `COMPLETED`, `BLOCKED`, `FAILED`.
+
+| State | Description |
+|-------|-------------|
+| `ASSIGNED` | Branch created, agent not yet dispatched. Safe to dispatch. |
+| `DISPATCHING` | Orchestrator has committed dispatch intent; agent not yet started. Written immediately before spawning. The window between this and `IMPLEMENTING` is the agent startup window. |
+| `IMPLEMENTING` | Agent is actively working. Heartbeat commits expected at least every 5 minutes. |
+| `BLOCKED` | Dependencies not met. Waiting for upstream assignment completion. |
+| `COMPLETED` | Terminal. Agent finished and integration succeeded. |
+| `FAILED` | Terminal. Agent failed, integration rejected, or explicitly abandoned. |
 
 ---
 
@@ -156,6 +168,8 @@ The task description is in the ASSIGNED commit body (readable via `git log`), no
 
 Worktrees are ephemeral. The Claude Code runtime cleans them up when the agent session ends, or when the branch has no changes. The branch itself (and all commits on it) persists per the branch retention policy (default: 30 days after terminal state).
 
+**Abandoned branch cleanup:** Non-terminal branches (`ASSIGNED`, `DISPATCHING`, `IMPLEMENTING`, `BLOCKED`) never trigger the 30-day clock because they never reach a terminal state. A branch in any non-terminal state with no `Heartbeat` commit in the last 7 days is considered abandoned and eligible for cleanup regardless of its current status. The v1 `timeout_seconds` field existed to solve this problem; v2 uses Heartbeat timestamps as the canonical signal instead.
+
 ---
 
 ## 6. Discovery
@@ -167,6 +181,13 @@ The orchestrator discovers all assignments by scanning `loom/*` branches. No fil
 ```bash
 git branch --list 'loom/*' --format='%(refname:short)'
 ```
+
+**Branch filtering:** `git branch --list 'loom/*'` matches any branch prefixed with `loom/`, including non-LOOM branches (e.g., `loom/pr-7`). Scanners MUST apply two filters before treating a branch as a LOOM assignment:
+
+1. Branch name matches the pattern `loom/<agent>-<slug>` where both components are kebab-case (e.g., `loom/ratchet-commit-schema`)
+2. Branch has at least one commit with a `Task-Status:` trailer
+
+Branches matching the glob but failing either filter are not LOOM assignments and MUST be skipped silently.
 
 ### 6.2 Get Assignment Status
 
@@ -188,7 +209,13 @@ done
 
 ### 6.3 Find Undispatched Assignments
 
-An ASSIGNED branch is one where the latest `Task-Status` commit still says `ASSIGNED` — no agent has yet committed `IMPLEMENTING`.
+An ASSIGNED branch is one where the latest `Task-Status` commit still says `ASSIGNED` — no orchestrator has yet committed `DISPATCHING`. A `DISPATCHING` branch has been dispatched but the agent has not yet committed `IMPLEMENTING`.
+
+The `DISPATCHING` status closes a gap that `ASSIGNED` alone cannot: if an agent is spawned but crashes before committing `IMPLEMENTING`, its branch looks identical to one that was never dispatched. With `DISPATCHING` written before spawning, the orchestrator can distinguish the two cases.
+
+Re-dispatch candidates:
+- `ASSIGNED`: safe to dispatch — never dispatched.
+- `DISPATCHING`: dispatched, agent in startup or dead. Safe to re-dispatch if no `Heartbeat` commit exists and the `DISPATCHING` commit is older than the startup timeout (default: 5 minutes).
 
 ```bash
 for b in $(git branch --list 'loom/*' --format='%(refname:short)'); do
@@ -232,16 +259,17 @@ The dispatcher (e.g., `loom-dispatch.sh`) reads ASSIGNED commits and spawns agen
 
 ### 7.2 Dispatch Steps
 
-1. **Discover**: Scan `git branch --list 'loom/*'` for branches where the latest `Task-Status` is `ASSIGNED`.
-2. **Read config**: Extract `Assigned-To`, `Assignment`, `Scope`, `Dependencies`, `Budget` from the ASSIGNED commit trailers. Extract the task description from the commit body.
+1. **Discover**: Scan `git branch --list 'loom/*'` for branches where the latest `Task-Status` is `ASSIGNED`. Apply branch name and Task-Status filters (section 6.1).
+2. **Read config**: Extract `Assigned-To`, `Assignment`, `Scope`, `Dependencies`, `Budget`, `Worktree-Base` from the ASSIGNED commit trailers. Extract the task description from the commit body.
 3. **Check dependencies**: For each dependency `<agent>/<slug>`, verify `loom/<agent>-<slug>` has `Task-Status: COMPLETED`.
 4. **Find identity**: Look up `agents/<assigned-to>/identity.md` in the repo. Optional — proceed without it if absent.
 5. **Build prompt**: Compose the agent prompt with identity content and task description. Include the branch name, session ID, and commit protocol instructions.
-6. **Spawn**: Invoke the Claude Code CLI or Agent SDK with `isolation: "worktree"`. The runtime creates the worktree and sets PWD.
+6. **Commit DISPATCHING**: Write a commit on the branch with `Task-Status: DISPATCHING` before spawning the agent. In multi-orchestrator deployments, push this commit to the remote; a rejected push means another orchestrator already dispatched this assignment — skip it. Git remote ref updates are atomic; this provides mutual exclusion without lock files.
+7. **Spawn**: Invoke the Claude Code CLI or Agent SDK with `isolation: "worktree"` from the `Worktree-Base` SHA. The runtime creates the worktree and sets PWD.
 
 ### 7.3 Idempotency
 
-In v2, idempotency is checked via branch state, not lock files. If the latest `Task-Status` on the branch is `IMPLEMENTING` or beyond, the assignment has already been dispatched. Skip it.
+In v2, idempotency is anchored by the `DISPATCHING` commit — the orchestrator's written record that dispatch happened, committed to the branch *before* the agent is spawned. If the latest `Task-Status` is `DISPATCHING`, `IMPLEMENTING`, or beyond, the assignment has already been dispatched. Skip it.
 
 ```bash
 s=$(git log -1 \
@@ -251,7 +279,9 @@ s=$(git log -1 \
 [[ "$s" == "ASSIGNED" ]] || { echo "already dispatched ($s)"; exit 0; }
 ```
 
-This is strictly more reliable than lock files: lock files can be orphaned (crash, disk wipe, git clone); branch state cannot.
+**Single-orchestrator assumption:** In deployments with exactly one orchestrator, reading branch state before dispatch is sufficient. Branch state is more reliable than local lock files in this context: lock files can be orphaned by crashes, disk wipes, or git clones; branch state cannot. The v1 `.dispatch-lock` file left a corpse you could see after a crash; the branch state survives it cleanly.
+
+**Multi-orchestrator:** Two concurrent orchestrators can both read `ASSIGNED` and both decide to dispatch. The tie-breaking mechanism is the remote push in step 6: only one orchestrator's push will succeed; the other will be rejected. The losing orchestrator MUST re-read branch state after a rejected push and abort. This uses git's native ref-update atomicity — no external coordination primitive required. This pattern only applies when orchestrators share a remote; local-only orchestrators cannot use this mechanism.
 
 ### 7.4 Session ID
 
@@ -329,10 +359,10 @@ An implementation conforms to this spec if:
 1. **No `.mcagent/` directory**: No LOOM code creates, reads, or requires `.mcagent/`. If the directory exists from a prior deployment, it is ignored.
 2. **No AGENT.json**: Assignment config lives entirely in ASSIGNED commit trailers. No AGENT.json file is written or read.
 3. **Identity in repo**: Agent identity files live at `agents/<name>/identity.md` in the repository (or the LOOM plugin directory for generic agents).
-4. **Assignment commit protocol**: ASSIGNED commits carry all required trailers (`Assigned-To`, `Assignment`, `Scope`, `Dependencies`, `Budget`) and the full task description in the body.
+4. **Assignment commit protocol**: ASSIGNED commits carry all required trailers (`Assigned-To`, `Assignment`, `Scope`, `Dependencies`, `Budget`, `Worktree-Base`) and the full task description in the body.
 5. **Worktree via runtime**: Worktrees are created by the agent runtime (`isolation: "worktree"`), not by dispatcher scripts.
-6. **Discovery via git**: All assignment discovery uses `git branch --list 'loom/*'` and `git log` queries. No filesystem scan of a state directory.
-7. **Idempotency via branch state**: Dispatch idempotency is enforced by checking the branch's latest `Task-Status` — not by lock files.
+6. **Discovery via git**: All assignment discovery uses `git branch --list 'loom/*'` and `git log` queries. No filesystem scan of a state directory. Scanners MUST filter results to branches matching `loom/<agent>-<slug>` and having at least one `Task-Status:` commit (section 6.1).
+7. **Idempotency via DISPATCHING commit**: Dispatch idempotency is enforced by the `DISPATCHING` status commit, written to the branch before spawning. In single-orchestrator deployments, reading branch state suffices. In multi-orchestrator deployments, the orchestrator MUST push the `DISPATCHING` commit before spawning and treat a rejected push as "already dispatched — skip."
 8. **Worktree purity**: The worktree contains only files intended for the target repository. No protocol artifacts in the worktree.
 9. **Commit protocol**: Every agent commit includes `Agent-Id` and `Session-Id` trailers. State-transition commits include `Task-Status`. Agents commit `Heartbeat` at least every 5 minutes.
 10. **Scope enforcement**: Integration rejects commits modifying files outside `Scope` (from ASSIGNED trailer) or inside `Scope-Denied`.
@@ -350,7 +380,7 @@ An implementation conforms to this spec if:
 | `.mcagent/agents/<name>/<assignment>/worktree/` | Managed by `isolation: "worktree"` | Path not fixed |
 | `.mcagent/agents/<name>/<assignment>/.dispatch-lock` | Branch `Task-Status` trailer | State replaces lock file |
 | AGENT.json `session_id` | Generated fresh at dispatch | No persistent session ID |
-| AGENT.json `base_ref` | Branch creation point (implicit) | Not stored explicitly |
+| AGENT.json `base_ref` | `Worktree-Base` trailer on ASSIGNED commit | Now explicit — SHA recorded at assignment creation time |
 | AGENT.json `repo` | Coordination repo or `.repos/` submodule | Not stored in trailers (v1) |
 | AGENT.json `context_window_tokens` | Not stored | Runtime responsibility |
 | AGENT.json `timeout_seconds` | Not stored | Heartbeat monitoring via `git log` |
