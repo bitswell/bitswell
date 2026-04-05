@@ -113,7 +113,7 @@ All trailers follow `git-interpret-trailers(1)` syntax.
 | Trailer | Type | Description |
 |---------|------|-------------|
 | `Task-Status` | enum | One of: `ASSIGNED`, `IMPLEMENTING`, `COMPLETED`, `BLOCKED`, `FAILED` |
-| `Heartbeat` | string | ISO-8601 UTC timestamp. SHOULD appear on every commit while agent is running. |
+| `Heartbeat` | string | ISO-8601 UTC timestamp. MUST appear on every commit while agent is running. |
 
 ### 4.3 Assignment trailers (ASSIGNED commits only)
 
@@ -188,6 +188,7 @@ All trailers follow `git-interpret-trailers(1)` syntax.
 | `Session-Id` | yes |
 | `Task-Status` | yes — value `BLOCKED` |
 | `Blocked-Reason` | yes |
+| `Heartbeat` | yes |
 
 ### 5.5 FAILED (agent writes)
 
@@ -368,9 +369,9 @@ done
 ASSIGNED --> IMPLEMENTING --> COMPLETED
                   |     ^
                   |     |
-                  +---> BLOCKED
-                  |
-                  +---> FAILED
+                  +---> BLOCKED -+
+                  |              | (orchestrator timeout)
+                  +---> FAILED <-+
 ```
 
 Valid transitions:
@@ -379,13 +380,13 @@ Valid transitions:
 - `IMPLEMENTING` -> `BLOCKED` (agent cannot proceed)
 - `IMPLEMENTING` -> `FAILED` (unrecoverable error)
 - `BLOCKED` -> `IMPLEMENTING` (blocker resolved)
+- `BLOCKED` -> `FAILED` (orchestrator timeout — orchestrator-written commit only)
 
 Invalid transitions (MUST reject):
 - Any state -> `ASSIGNED` (assignment happens once)
 - `COMPLETED` -> any state (terminal)
 - `FAILED` -> any state (terminal)
 - `BLOCKED` -> `COMPLETED` (must resume `IMPLEMENTING` first)
-- `BLOCKED` -> `FAILED` (must resume `IMPLEMENTING` first)
 
 ---
 
