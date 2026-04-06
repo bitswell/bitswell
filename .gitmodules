@@ -1,0 +1,3 @@
+[submodule "repos/loom-tools"]
+	path = repos/loom-tools
+	url = git@github-bitswell:bitswell/loom-tools.git
