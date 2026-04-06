@@ -5,3 +5,4 @@ edition = "2024"
 description = "Validation suite for the bitswell identity framework"
 
 [dependencies]
+serde_json = "1"
