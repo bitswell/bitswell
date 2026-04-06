@@ -58,14 +58,6 @@ fn run_git(dir: &Path, args: &[&str]) -> Output {
     output
 }
 
-/// Run a git command, returning output without panicking on failure.
-fn try_run_git(dir: &Path, args: &[&str]) -> Output {
-    Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .unwrap_or_else(|e| panic!("failed to run git {:?}: {}", args, e))
-}
 
 /// Creates a loom/* branch with an ASSIGNED commit in the test repo.
 fn create_assigned_branch(dir: &Path, branch: &str, agent: &str, assignment: &str) {
