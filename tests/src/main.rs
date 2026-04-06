@@ -5,8 +5,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-mod loom;
-
 // ── Configuration ───────────────────────────────────────────────────────────
 
 const REQUIRED_AGENT_FILES: &[&str] = &[
