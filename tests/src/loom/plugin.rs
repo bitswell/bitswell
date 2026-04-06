@@ -4,7 +4,6 @@
 //! agent definitions, skill references, hooks, and bin scripts. Also checks
 //! for v1 remnants that should no longer exist.
 
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
