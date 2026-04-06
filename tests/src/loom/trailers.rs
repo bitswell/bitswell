@@ -1,29 +1,23 @@
-//! LOOM commit message parser and validator.
+//! LOOM protocol trailer parser and validator.
 //!
-//! Implements the LOOM protocol v2 schemas defined in
-//! `loom/skills/orchestrate/references/schemas.md`.
+//! Parses conventional commit messages into structured data and validates
+//! them against the LOOM protocol schema (v2.0.0).
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────
 
-/// Parsed commit message header.
+/// A parsed conventional commit message.
 #[derive(Debug, Clone, PartialEq)]
-pub struct CommitHeader {
+pub struct CommitMessage {
     pub commit_type: String,
     pub scope: Option<String>,
     pub subject: String,
-}
-
-/// A fully parsed LOOM commit message.
-#[derive(Debug, Clone)]
-pub struct CommitMessage {
-    pub header: CommitHeader,
     pub body: Option<String>,
-    /// Ordered trailer pairs; repeated keys are preserved.
+    /// Trailers in document order. Multiple entries with the same key are allowed.
     pub trailers: Vec<(String, String)>,
 }
 
 impl CommitMessage {
-    /// First value of a trailer (case-insensitive key match).
+    /// First value for a trailer key (case-insensitive).
     pub fn trailer(&self, key: &str) -> Option<&str> {
         self.trailers
             .iter()
@@ -31,60 +25,17 @@ impl CommitMessage {
             .map(|(_, v)| v.as_str())
     }
 
-    /// All values of a trailer (case-insensitive key match).
-    pub fn trailer_all(&self, key: &str) -> Vec<&str> {
+    /// All values for a trailer key (case-insensitive).
+    pub fn trailers_all(&self, key: &str) -> Vec<&str> {
         self.trailers
             .iter()
             .filter(|(k, _)| k.eq_ignore_ascii_case(key))
             .map(|(_, v)| v.as_str())
             .collect()
     }
-
-    /// Parsed Task-Status, if present.
-    pub fn task_status(&self) -> Option<TaskStatus> {
-        self.trailer("Task-Status")?.parse().ok()
-    }
 }
 
-/// LOOM task lifecycle states.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskStatus {
-    Assigned,
-    Implementing,
-    Completed,
-    Blocked,
-    Failed,
-}
-
-impl std::str::FromStr for TaskStatus {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim() {
-            "ASSIGNED" => Ok(Self::Assigned),
-            "IMPLEMENTING" => Ok(Self::Implementing),
-            "COMPLETED" => Ok(Self::Completed),
-            "BLOCKED" => Ok(Self::Blocked),
-            "FAILED" => Ok(Self::Failed),
-            other => Err(format!("invalid Task-Status value: {other:?}")),
-        }
-    }
-}
-
-impl std::fmt::Display for TaskStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Self::Assigned => "ASSIGNED",
-            Self::Implementing => "IMPLEMENTING",
-            Self::Completed => "COMPLETED",
-            Self::Blocked => "BLOCKED",
-            Self::Failed => "FAILED",
-        };
-        write!(f, "{s}")
-    }
-}
-
-/// A single validation error.
+/// A validation error.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationError {
     pub message: String,
@@ -100,441 +51,491 @@ impl ValidationError {
 
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
+        f.write_str(&self.message)
     }
 }
 
-// ── Parsing ───────────────────────────────────────────────────────────────────
+/// Task lifecycle states.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaskStatus {
+    Assigned,
+    Implementing,
+    Completed,
+    Blocked,
+    Failed,
+}
+
+impl TaskStatus {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim() {
+            "ASSIGNED" => Some(Self::Assigned),
+            "IMPLEMENTING" => Some(Self::Implementing),
+            "COMPLETED" => Some(Self::Completed),
+            "BLOCKED" => Some(Self::Blocked),
+            "FAILED" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+// ── Parser ───────────────────────────────────────────────────────────────────
 
 /// Parse a raw commit message string into a [`CommitMessage`].
-pub fn parse_commit_message(msg: &str) -> Result<CommitMessage, String> {
-    let mut lines = msg.lines();
-    let header_line = lines.next().ok_or("empty commit message")?;
-    let header = parse_header(header_line)?;
+///
+/// Returns `Err` if the first line does not match the conventional commit format.
+pub fn parse_commit(raw: &str) -> Result<CommitMessage, String> {
+    let mut lines = raw.lines();
+    let header = lines.next().unwrap_or("").trim();
+    let (commit_type, scope, subject) = parse_header(header)?;
     let rest: Vec<&str> = lines.collect();
-    let (body, trailers) = split_body_and_trailers(&rest);
+    let (body, trailers) = split_body_trailers(&rest);
     Ok(CommitMessage {
-        header,
+        commit_type,
+        scope,
+        subject,
         body,
         trailers,
     })
 }
 
-fn parse_header(line: &str) -> Result<CommitHeader, String> {
-    let colon_pos = line
-        .find(": ")
-        .ok_or_else(|| format!("no ': ' in header: {line:?}"))?;
-    let type_scope = &line[..colon_pos];
-    let subject = line[colon_pos + 2..].trim().to_string();
-    if subject.is_empty() {
-        return Err("empty commit subject".to_string());
-    }
-    if let Some(open) = type_scope.find('(') {
-        let close = type_scope
-            .rfind(')')
-            .ok_or("unclosed '(' in commit type/scope")?;
-        let commit_type = type_scope[..open].trim().to_string();
-        let scope = type_scope[open + 1..close].trim().to_string();
-        if commit_type.is_empty() {
-            return Err("empty commit type".to_string());
-        }
-        Ok(CommitHeader {
-            commit_type,
-            scope: if scope.is_empty() { None } else { Some(scope) },
-            subject,
-        })
+fn parse_header(header: &str) -> Result<(String, Option<String>, String), String> {
+    let colon_pos = header
+        .find(':')
+        .ok_or_else(|| format!("header has no colon: {header:?}"))?;
+
+    let type_scope = &header[..colon_pos];
+    let subject = header[colon_pos + 1..].trim();
+
+    let (commit_type, scope) = if let (Some(open), Some(close)) =
+        (type_scope.find('('), type_scope.rfind(')'))
+    {
+        (
+            type_scope[..open].trim().to_string(),
+            Some(type_scope[open + 1..close].trim().to_string()),
+        )
     } else {
-        let commit_type = type_scope.trim().to_string();
-        if commit_type.is_empty() {
-            return Err("empty commit type".to_string());
-        }
-        Ok(CommitHeader {
-            commit_type,
-            scope: None,
-            subject,
-        })
+        (type_scope.trim().to_string(), None)
+    };
+
+    if commit_type.is_empty() {
+        return Err("commit type is empty".into());
     }
+    if subject.is_empty() {
+        return Err("subject is empty".into());
+    }
+    Ok((commit_type, scope, subject.to_string()))
 }
 
-/// True if `line` is a git trailer: `Token: value` with no leading whitespace.
-fn is_trailer_line(line: &str) -> bool {
-    if line.is_empty() || line.starts_with(|c: char| c.is_whitespace()) {
-        return false;
+/// Split lines after the header into (body, trailers).
+///
+/// The last non-empty block is treated as trailers if every line in it
+/// matches the `Key: value` trailer format.
+fn split_body_trailers(lines: &[&str]) -> (Option<String>, Vec<(String, String)>) {
+    let mut blocks: Vec<Vec<&str>> = vec![];
+    let mut current: Vec<&str> = vec![];
+    for &line in lines {
+        if line.trim().is_empty() {
+            if !current.is_empty() {
+                blocks.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push(line);
+        }
     }
-    if let Some(colon) = line.find(": ") {
-        let key = &line[..colon];
+    if !current.is_empty() {
+        blocks.push(current);
+    }
+
+    let trailer_block_idx = blocks
+        .last()
+        .filter(|block| !block.is_empty() && block.iter().all(|l| looks_like_trailer(l)))
+        .map(|_| blocks.len() - 1);
+
+    let trailers: Vec<(String, String)> = match trailer_block_idx {
+        Some(i) => blocks[i]
+            .iter()
+            .filter_map(|l| parse_trailer_line(l))
+            .collect(),
+        None => vec![],
+    };
+
+    let body_blocks = match trailer_block_idx {
+        Some(i) => &blocks[..i],
+        None => &blocks[..],
+    };
+
+    let body = if body_blocks.is_empty() {
+        None
+    } else {
+        Some(
+            body_blocks
+                .iter()
+                .map(|block| block.join("\n"))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+        )
+    };
+
+    (body, trailers)
+}
+
+fn looks_like_trailer(line: &str) -> bool {
+    if let Some(pos) = line.find(':') {
+        let key = &line[..pos];
         !key.is_empty()
-            && key
-                .chars()
-                .all(|c: char| c.is_alphanumeric() || c == '-')
-            && !line[colon + 2..].trim().is_empty()
+            && !key.contains(' ')
+            && key.chars().all(|c| c.is_alphanumeric() || c == '-')
+            && line[pos + 1..].starts_with(' ')
     } else {
         false
     }
 }
 
-/// Split lines after the header into (body, trailers).
+fn parse_trailer_line(line: &str) -> Option<(String, String)> {
+    let pos = line.find(':')?;
+    let key = line[..pos].trim().to_string();
+    let value = line[pos + 1..].trim().to_string();
+    if key.is_empty() {
+        return None;
+    }
+    Some((key, value))
+}
+
+// ── Per-commit validation ─────────────────────────────────────────────────────
+
+/// Validate a single commit message against the LOOM protocol.
 ///
-/// Trailers are the last block of `Key: Value` lines preceded by a blank line.
-fn split_body_and_trailers(lines: &[&str]) -> (Option<String>, Vec<(String, String)>) {
-    if let Some(blank) = lines.iter().rposition(|l| l.is_empty()) {
-        let tail = &lines[blank + 1..];
-        if !tail.is_empty() && tail.iter().all(|l| l.is_empty() || is_trailer_line(l)) {
-            let trailers: Vec<(String, String)> = tail
-                .iter()
-                .filter(|l| !l.is_empty())
-                .map(|l| {
-                    let colon = l.find(": ").unwrap();
-                    (l[..colon].to_string(), l[colon + 2..].trim().to_string())
-                })
-                .collect();
-            if !trailers.is_empty() {
-                let body = lines[..blank].join("\n").trim().to_string();
-                return (
-                    if body.is_empty() { None } else { Some(body) },
-                    trailers,
-                );
+/// Returns a list of errors (empty = valid).
+pub fn validate_commit(msg: &CommitMessage) -> Vec<ValidationError> {
+    let mut errors = vec![];
+
+    // Agent-Id: required, must be kebab-case
+    match msg.trailer("Agent-Id") {
+        None => errors.push(ValidationError::new("missing required trailer: Agent-Id")),
+        Some(id) => {
+            if !is_kebab_case(id) {
+                errors.push(ValidationError::new(format!(
+                    "Agent-Id {id:?} is not kebab-case ([a-z0-9]+(-[a-z0-9]+)*)"
+                )));
             }
         }
     }
-    let body = lines.join("\n").trim().to_string();
-    (if body.is_empty() { None } else { Some(body) }, vec![])
+
+    // Session-Id: required, must be UUID v4
+    match msg.trailer("Session-Id") {
+        None => errors.push(ValidationError::new("missing required trailer: Session-Id")),
+        Some(sid) => {
+            if !is_uuid_v4(sid) {
+                errors.push(ValidationError::new(format!(
+                    "Session-Id {sid:?} is not a valid UUID v4"
+                )));
+            }
+        }
+    }
+
+    // Heartbeat: optional presence, but must be RFC3339 if present
+    if let Some(hb) = msg.trailer("Heartbeat") {
+        if !is_rfc3339(hb) {
+            errors.push(ValidationError::new(format!(
+                "Heartbeat {hb:?} is not a valid RFC3339 timestamp"
+            )));
+        }
+    }
+
+    // Task-Status: must be valid enum value if present
+    let task_status = match msg.trailer("Task-Status") {
+        None => None,
+        Some(s) => match TaskStatus::parse(s) {
+            Some(ts) => Some(ts),
+            None => {
+                errors.push(ValidationError::new(format!(
+                    "Task-Status {s:?} must be one of: ASSIGNED, IMPLEMENTING, COMPLETED, BLOCKED, FAILED"
+                )));
+                None
+            }
+        },
+    };
+
+    // State-conditional requirements
+    match &task_status {
+        Some(TaskStatus::Assigned) => {
+            for required in &["Assigned-To", "Assignment", "Scope", "Dependencies", "Budget"] {
+                if msg.trailer(required).is_none() {
+                    errors.push(ValidationError::new(format!(
+                        "Task-Status ASSIGNED requires trailer: {required}"
+                    )));
+                }
+            }
+        }
+        Some(TaskStatus::Implementing) => {
+            if msg.trailer("Heartbeat").is_none() {
+                errors.push(ValidationError::new(
+                    "Task-Status IMPLEMENTING requires trailer: Heartbeat",
+                ));
+            }
+        }
+        Some(TaskStatus::Completed) => {
+            match msg.trailer("Files-Changed") {
+                None => errors.push(ValidationError::new(
+                    "Task-Status COMPLETED requires trailer: Files-Changed",
+                )),
+                Some(fc) => {
+                    if fc.parse::<u64>().is_err() {
+                        errors.push(ValidationError::new(format!(
+                            "Files-Changed {fc:?} must be a non-negative integer"
+                        )));
+                    }
+                }
+            }
+            if msg.trailers_all("Key-Finding").is_empty() {
+                errors.push(ValidationError::new(
+                    "Task-Status COMPLETED requires at least one Key-Finding trailer",
+                ));
+            }
+            if msg.trailer("Heartbeat").is_none() {
+                errors.push(ValidationError::new(
+                    "Task-Status COMPLETED requires trailer: Heartbeat",
+                ));
+            }
+        }
+        Some(TaskStatus::Blocked) => {
+            if msg.trailer("Blocked-Reason").is_none() {
+                errors.push(ValidationError::new(
+                    "Task-Status BLOCKED requires trailer: Blocked-Reason",
+                ));
+            }
+            if msg.trailer("Heartbeat").is_none() {
+                errors.push(ValidationError::new(
+                    "Task-Status BLOCKED requires trailer: Heartbeat",
+                ));
+            }
+        }
+        Some(TaskStatus::Failed) => {
+            match msg.trailer("Error-Category") {
+                None => errors.push(ValidationError::new(
+                    "Task-Status FAILED requires trailer: Error-Category",
+                )),
+                Some(ec) => {
+                    const VALID: &[&str] =
+                        &["task_unclear", "blocked", "resource_limit", "conflict", "internal"];
+                    if !VALID.contains(&ec) {
+                        errors.push(ValidationError::new(format!(
+                            "Error-Category {ec:?} must be one of: task_unclear, blocked, resource_limit, conflict, internal"
+                        )));
+                    }
+                }
+            }
+            match msg.trailer("Error-Retryable") {
+                None => errors.push(ValidationError::new(
+                    "Task-Status FAILED requires trailer: Error-Retryable",
+                )),
+                Some(er) => {
+                    if er != "true" && er != "false" {
+                        errors.push(ValidationError::new(format!(
+                            "Error-Retryable {er:?} must be \"true\" or \"false\""
+                        )));
+                    }
+                }
+            }
+        }
+        None => {}
+    }
+
+    errors
+}
+
+// ── Branch validation ─────────────────────────────────────────────────────────
+
+/// Validate a branch name against the LOOM naming convention.
+///
+/// Valid: `loom/<agent>-<slug>` where the suffix is kebab-case and total <= 63 chars.
+pub fn validate_branch(branch: &str) -> Vec<ValidationError> {
+    let mut errors = vec![];
+
+    if branch.len() > 63 {
+        errors.push(ValidationError::new(format!(
+            "branch name exceeds 63 characters (len={}): {branch:?}",
+            branch.len()
+        )));
+    }
+
+    let Some(rest) = branch.strip_prefix("loom/") else {
+        errors.push(ValidationError::new(format!(
+            "branch {branch:?} does not start with \"loom/\""
+        )));
+        return errors;
+    };
+
+    if !is_kebab_case(rest) {
+        errors.push(ValidationError::new(format!(
+            "branch suffix {rest:?} is not kebab-case ([a-z0-9]+(-[a-z0-9]+)*)"
+        )));
+    }
+
+    if !rest.contains('-') {
+        errors.push(ValidationError::new(format!(
+            "branch suffix {rest:?} must be <agent>-<slug> (missing hyphen)"
+        )));
+    }
+
+    errors
+}
+
+// ── Branch-history (sequence) validation ─────────────────────────────────────
+
+/// Validate a sequence of commits on a branch against branch-level LOOM rules.
+///
+/// `commits` must be in chronological order (oldest first).
+pub fn validate_branch_history(commits: &[CommitMessage]) -> Vec<ValidationError> {
+    let mut errors = vec![];
+
+    if commits.is_empty() {
+        return errors;
+    }
+
+    // Rule 9: first commit must be ASSIGNED
+    if commits[0].trailer("Task-Status") != Some("ASSIGNED") {
+        errors.push(ValidationError::new(format!(
+            "first commit must have Task-Status: ASSIGNED, got: {:?}",
+            commits[0].trailer("Task-Status")
+        )));
+    }
+
+    let mut seen_terminal = false;
+    let mut prev_status: Option<TaskStatus> = None;
+
+    for (i, commit) in commits.iter().enumerate() {
+        let status = commit
+            .trailer("Task-Status")
+            .and_then(TaskStatus::parse);
+
+        // Rule 12: no Task-Status commits after a terminal state
+        if seen_terminal {
+            if let Some(s) = commit.trailer("Task-Status") {
+                errors.push(ValidationError::new(format!(
+                    "commit {} carries Task-Status: {s:?} after a terminal state",
+                    i + 1
+                )));
+            }
+        }
+
+        if let Some(ref current) = status {
+            // State machine transition
+            if let Some(ref prev) = prev_status {
+                if !is_valid_transition(prev, current) {
+                    errors.push(ValidationError::new(format!(
+                        "invalid state transition at commit {}: {:?} -> {:?}",
+                        i + 1,
+                        prev,
+                        current
+                    )));
+                }
+            }
+
+            if matches!(current, TaskStatus::Completed | TaskStatus::Failed) {
+                seen_terminal = true;
+            }
+
+            prev_status = Some(current.clone());
+        }
+    }
+
+    errors
+}
+
+fn is_valid_transition(from: &TaskStatus, to: &TaskStatus) -> bool {
+    matches!(
+        (from, to),
+        (TaskStatus::Assigned, TaskStatus::Implementing)
+            | (TaskStatus::Implementing, TaskStatus::Completed)
+            | (TaskStatus::Implementing, TaskStatus::Blocked)
+            | (TaskStatus::Implementing, TaskStatus::Failed)
+            | (TaskStatus::Blocked, TaskStatus::Implementing)
+            | (TaskStatus::Blocked, TaskStatus::Failed)
+    )
 }
 
 // ── Format validators ─────────────────────────────────────────────────────────
 
-/// True if `s` matches `[a-z0-9]+(-[a-z0-9]+)*` (kebab-case).
-fn is_kebab_case(s: &str) -> bool {
+/// Returns true if `s` matches `[a-z0-9]+(-[a-z0-9]+)*`.
+pub fn is_kebab_case(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
-    s.split('-').all(|seg| {
-        !seg.is_empty()
-            && seg
-                .chars()
-                .all(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
-    })
+    s.split('-')
+        .all(|seg| !seg.is_empty() && seg.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
 }
 
-/// True if `s` is a valid UUID v4: `xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx`.
-fn is_valid_uuid_v4(s: &str) -> bool {
+/// Returns true if `s` is a valid UUID v4 (`xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx`).
+pub fn is_uuid_v4(s: &str) -> bool {
     let parts: Vec<&str> = s.split('-').collect();
     if parts.len() != 5 {
         return false;
     }
-    for (part, &expected) in parts.iter().zip(&[8usize, 4, 4, 4, 12]) {
-        if part.len() != expected || !part.chars().all(|c: char| c.is_ascii_hexdigit()) {
+    let expected_lengths = [8usize, 4, 4, 4, 12];
+    for (part, &len) in parts.iter().zip(expected_lengths.iter()) {
+        if part.len() != len || !part.chars().all(|c| c.is_ascii_hexdigit()) {
             return false;
         }
     }
-    // Version nibble must be '4'.
+    // Third group must start with '4' (version 4)
     if !parts[2].starts_with('4') {
         return false;
     }
-    // Variant nibble must be 8, 9, a, or b.
-    matches!(
-        parts[3].chars().next().unwrap(),
-        '8' | '9' | 'a' | 'b' | 'A' | 'B'
-    )
+    // Fourth group must start with 8, 9, a, or b (variant bits)
+    matches!(parts[3].chars().next(), Some('8' | '9' | 'a' | 'b' | 'A' | 'B'))
 }
 
-// ── Public validation API ─────────────────────────────────────────────────────
-
-/// Validate a single commit message against LOOM per-commit rules (schema §7.1).
+/// Returns true if `s` is a valid RFC3339 timestamp.
 ///
-/// Returns an empty `Vec` if the commit is valid.
-pub fn validate_commit(msg: &str) -> Vec<ValidationError> {
-    let commit = match parse_commit_message(msg) {
-        Ok(c) => c,
-        Err(e) => return vec![ValidationError::new(format!("parse error: {e}"))],
+/// Accepts `YYYY-MM-DDTHH:MM:SSZ`, `YYYY-MM-DDTHH:MM:SS.sssZ`,
+/// and `±HH:MM` timezone offsets.
+pub fn is_rfc3339(s: &str) -> bool {
+    if s.len() < 20 {
+        return false;
+    }
+    let b = s.as_bytes();
+    if !is_digit4(&b[0..4])
+        || b[4] != b'-'
+        || !is_digit2(&b[5..7])
+        || b[7] != b'-'
+        || !is_digit2(&b[8..10])
+        || (b[10] != b'T' && b[10] != b't')
+        || !is_digit2(&b[11..13])
+        || b[13] != b':'
+        || !is_digit2(&b[14..16])
+        || b[16] != b':'
+        || !is_digit2(&b[17..19])
+    {
+        return false;
+    }
+
+    let rest = &s[19..];
+    let after_frac = if rest.starts_with('.') {
+        let digits_end = rest[1..]
+            .find(|c: char| !c.is_ascii_digit())
+            .map(|n| n + 1)
+            .unwrap_or(rest.len());
+        &rest[digits_end..]
+    } else {
+        rest
     };
 
-    let mut errors = vec![];
-
-    // Rules 1 & 2: Agent-Id required, must be kebab-case.
-    match commit.trailer("Agent-Id") {
-        None => errors.push(ValidationError::new("missing required trailer: Agent-Id")),
-        Some(id) if !is_kebab_case(id) => errors.push(ValidationError::new(format!(
-            "Agent-Id must be kebab-case: {id:?}"
-        ))),
-        _ => {}
-    }
-
-    // Rules 1 & 3: Session-Id required, must be UUID v4.
-    match commit.trailer("Session-Id") {
-        None => errors.push(ValidationError::new("missing required trailer: Session-Id")),
-        Some(sid) if !is_valid_uuid_v4(sid) => errors.push(ValidationError::new(format!(
-            "Session-Id must be UUID v4: {sid:?}"
-        ))),
-        _ => {}
-    }
-
-    // Rule 4: Task-Status must be a valid value if present.
-    if let Some(status_str) = commit.trailer("Task-Status") {
-        let status: Option<TaskStatus> = match status_str.parse() {
-            Ok(s) => Some(s),
-            Err(e) => {
-                errors.push(ValidationError::new(e));
-                None
-            }
-        };
-
-        if let Some(status) = status {
-            match status {
-                // Rule 5: ASSIGNED requires assignment trailers.
-                TaskStatus::Assigned => {
-                    for key in ["Assigned-To", "Assignment", "Scope", "Dependencies", "Budget"] {
-                        if commit.trailer(key).is_none() {
-                            errors.push(ValidationError::new(format!(
-                                "ASSIGNED commit missing required trailer: {key}"
-                            )));
-                        }
-                    }
-                    if let Some(budget) = commit.trailer("Budget") {
-                        if budget.parse::<u64>().is_err() {
-                            errors.push(ValidationError::new(format!(
-                                "Budget must be a positive integer: {budget:?}"
-                            )));
-                        }
-                    }
-                }
-
-                // Rule 6: COMPLETED requires Files-Changed and at least one Key-Finding.
-                TaskStatus::Completed => {
-                    match commit.trailer("Files-Changed") {
-                        None => errors.push(ValidationError::new(
-                            "COMPLETED commit missing required trailer: Files-Changed",
-                        )),
-                        Some(fc) if fc.parse::<u64>().is_err() => {
-                            errors.push(ValidationError::new(format!(
-                                "Files-Changed must be a non-negative integer: {fc:?}"
-                            )));
-                        }
-                        _ => {}
-                    }
-                    if commit.trailer("Key-Finding").is_none() {
-                        errors.push(ValidationError::new(
-                            "COMPLETED commit missing required trailer: Key-Finding",
-                        ));
-                    }
-                    if commit.trailer("Heartbeat").is_none() {
-                        errors.push(ValidationError::new(
-                            "COMPLETED commit missing required trailer: Heartbeat",
-                        ));
-                    }
-                }
-
-                // Rule 7: BLOCKED requires Blocked-Reason.
-                TaskStatus::Blocked => {
-                    if commit.trailer("Blocked-Reason").is_none() {
-                        errors.push(ValidationError::new(
-                            "BLOCKED commit missing required trailer: Blocked-Reason",
-                        ));
-                    }
-                    if commit.trailer("Heartbeat").is_none() {
-                        errors.push(ValidationError::new(
-                            "BLOCKED commit missing required trailer: Heartbeat",
-                        ));
-                    }
-                }
-
-                // Rule 8: FAILED requires Error-Category and Error-Retryable.
-                TaskStatus::Failed => {
-                    for key in ["Error-Category", "Error-Retryable"] {
-                        if commit.trailer(key).is_none() {
-                            errors.push(ValidationError::new(format!(
-                                "FAILED commit missing required trailer: {key}"
-                            )));
-                        }
-                    }
-                    if let Some(cat) = commit.trailer("Error-Category") {
-                        const VALID_CATS: &[&str] = &[
-                            "task_unclear",
-                            "blocked",
-                            "resource_limit",
-                            "conflict",
-                            "internal",
-                        ];
-                        if !VALID_CATS.contains(&cat) {
-                            errors.push(ValidationError::new(format!(
-                                "invalid Error-Category: {cat:?} (must be one of: {})",
-                                VALID_CATS.join(", ")
-                            )));
-                        }
-                    }
-                    if let Some(ret) = commit.trailer("Error-Retryable") {
-                        if ret != "true" && ret != "false" {
-                            errors.push(ValidationError::new(format!(
-                                "Error-Retryable must be 'true' or 'false': {ret:?}"
-                            )));
-                        }
-                    }
-                }
-
-                // IMPLEMENTING requires Heartbeat.
-                TaskStatus::Implementing => {
-                    if commit.trailer("Heartbeat").is_none() {
-                        errors.push(ValidationError::new(
-                            "IMPLEMENTING commit missing required trailer: Heartbeat",
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    errors
+    after_frac == "Z"
+        || after_frac == "z"
+        || (after_frac.len() == 6
+            && (after_frac.starts_with('+') || after_frac.starts_with('-'))
+            && is_digit2(after_frac[1..3].as_bytes())
+            && after_frac.as_bytes()[3] == b':'
+            && is_digit2(after_frac[4..6].as_bytes()))
 }
 
-/// Validate a branch name against LOOM naming convention (schema §2).
-///
-/// Returns an empty `Vec` if the name is valid.
-pub fn validate_branch_name(name: &str) -> Vec<ValidationError> {
-    let mut errors = vec![];
-
-    if name.len() > 63 {
-        errors.push(ValidationError::new(format!(
-            "branch name exceeds 63 characters ({} chars): {name:?}",
-            name.len()
-        )));
-    }
-
-    let Some(rest) = name.strip_prefix("loom/") else {
-        errors.push(ValidationError::new("branch name must start with 'loom/'"));
-        return errors;
-    };
-
-    let Some(hyphen) = rest.find('-') else {
-        errors.push(ValidationError::new(
-            "branch name must have format loom/<agent>-<slug>",
-        ));
-        return errors;
-    };
-
-    let agent = &rest[..hyphen];
-    let slug = &rest[hyphen + 1..];
-
-    if !is_kebab_case(agent) {
-        errors.push(ValidationError::new(format!(
-            "agent part of branch name must be kebab-case: {agent:?}"
-        )));
-    }
-    if slug.is_empty() {
-        errors.push(ValidationError::new("slug part of branch name is empty"));
-    } else if !is_kebab_case(slug) {
-        errors.push(ValidationError::new(format!(
-            "slug part of branch name must be kebab-case: {slug:?}"
-        )));
-    }
-
-    errors
+fn is_digit4(b: &[u8]) -> bool {
+    b.len() >= 4 && b[..4].iter().all(|c| c.is_ascii_digit())
 }
 
-/// Validate a branch's commit sequence against LOOM branch-level rules (schema §7.2).
-///
-/// `messages` is an ordered slice of raw commit messages, **oldest first**.
-/// Returns an empty `Vec` if the sequence is valid.
-pub fn validate_branch_sequence(messages: &[&str]) -> Vec<ValidationError> {
-    let mut errors = vec![];
-
-    if messages.is_empty() {
-        errors.push(ValidationError::new("branch has no commits"));
-        return errors;
-    }
-
-    // Rule 9: first commit must be ASSIGNED.
-    let first = match parse_commit_message(messages[0]) {
-        Ok(c) => c,
-        Err(e) => {
-            errors.push(ValidationError::new(format!("first commit parse error: {e}")));
-            return errors;
-        }
-    };
-    if first.task_status() != Some(TaskStatus::Assigned) {
-        errors.push(ValidationError::new(format!(
-            "first commit must have Task-Status: ASSIGNED, got: {:?}",
-            first.trailer("Task-Status")
-        )));
-    }
-
-    let mut prev_status: Option<TaskStatus> = first.task_status();
-    let mut terminal_seen = false;
-    let mut terminal_count: usize = 0;
-
-    for (i, msg) in messages[1..].iter().enumerate() {
-        let idx = i + 2; // human-readable commit number (1-based, first = 1)
-        let commit = match parse_commit_message(msg) {
-            Ok(c) => c,
-            Err(e) => {
-                errors.push(ValidationError::new(format!("commit {idx} parse error: {e}")));
-                continue;
-            }
-        };
-
-        let status = commit.task_status();
-
-        // Rule 12: no Task-Status after a terminal commit.
-        if terminal_seen {
-            if status.is_some() {
-                errors.push(ValidationError::new(format!(
-                    "commit {idx}: Task-Status present after terminal state"
-                )));
-            }
-            continue;
-        }
-
-        // Rules 11 & 13: track terminal commits.
-        if matches!(status, Some(TaskStatus::Completed) | Some(TaskStatus::Failed)) {
-            terminal_count += 1;
-            terminal_seen = true;
-            if terminal_count > 1 {
-                errors.push(ValidationError::new(format!(
-                    "commit {idx}: branch already has a terminal commit"
-                )));
-            }
-        }
-
-        // Validate state machine transitions.
-        if let Some(curr) = status {
-            if let Some(err) = transition_error(prev_status, curr, idx) {
-                errors.push(err);
-            } else {
-                prev_status = Some(curr);
-            }
-        }
-    }
-
-    errors
-}
-
-/// Returns an error if the transition `from -> to` is invalid, `None` if valid.
-fn transition_error(
-    from: Option<TaskStatus>,
-    to: TaskStatus,
-    idx: usize,
-) -> Option<ValidationError> {
-    match (from, to) {
-        // Valid transitions.
-        (Some(TaskStatus::Assigned), TaskStatus::Implementing) => None,
-        (Some(TaskStatus::Implementing), TaskStatus::Completed) => None,
-        (Some(TaskStatus::Implementing), TaskStatus::Blocked) => None,
-        (Some(TaskStatus::Implementing), TaskStatus::Failed) => None,
-        (Some(TaskStatus::Blocked), TaskStatus::Implementing) => None,
-        (Some(TaskStatus::Blocked), TaskStatus::Failed) => None,
-        // ASSIGNED may only appear once (as the very first commit).
-        (_, TaskStatus::Assigned) => Some(ValidationError::new(format!(
-            "commit {idx}: ASSIGNED may only appear as the first commit"
-        ))),
-        // BLOCKED -> COMPLETED is forbidden; must resume IMPLEMENTING first.
-        (Some(TaskStatus::Blocked), TaskStatus::Completed) => Some(ValidationError::new(format!(
-            "commit {idx}: invalid transition BLOCKED -> COMPLETED; must resume IMPLEMENTING first"
-        ))),
-        (from, to) => Some(ValidationError::new(format!(
-            "commit {idx}: invalid transition {} -> {to}",
-            from.map(|s| s.to_string())
-                .unwrap_or_else(|| "none".to_string())
-        ))),
-    }
+fn is_digit2(b: &[u8]) -> bool {
+    b.len() >= 2 && b[..2].iter().all(|c| c.is_ascii_digit())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -543,192 +544,107 @@ fn transition_error(
 mod tests {
     use super::*;
 
-    // A valid UUID v4 used across tests (from LOOM examples).
-    const UUID: &str = "f8309ae8-ac76-4766-8926-362cdd06d04b";
-
-    // ── parse_commit_message ─────────────────────────────────────────────────
+    // ── Parser tests ──
 
     #[test]
-    fn parse_header_with_scope() {
-        let msg = format!(
-            "chore(loom): begin implementing trailer parser\n\nAgent-Id: ratchet\nSession-Id: {UUID}"
-        );
-        let commit = parse_commit_message(&msg).unwrap();
-        assert_eq!(commit.header.commit_type, "chore");
-        assert_eq!(commit.header.scope, Some("loom".to_string()));
-        assert_eq!(commit.header.subject, "begin implementing trailer parser");
-        assert_eq!(commit.trailer("Agent-Id"), Some("ratchet"));
-        assert_eq!(commit.trailer("Session-Id"), Some(UUID));
-    }
-
-    #[test]
-    fn parse_header_without_scope() {
-        let msg = format!("feat: add feature\n\nAgent-Id: moss\nSession-Id: {UUID}");
-        let commit = parse_commit_message(&msg).unwrap();
-        assert_eq!(commit.header.commit_type, "feat");
-        assert_eq!(commit.header.scope, None);
-        assert_eq!(commit.header.subject, "add feature");
-    }
-
-    #[test]
-    fn parse_body_and_trailers() {
-        let msg = format!(
-            "feat(loom): add feature\n\nThis explains the why.\nMore context.\n\nAgent-Id: ratchet\nSession-Id: {UUID}"
-        );
-        let commit = parse_commit_message(&msg).unwrap();
+    fn test_parse_simple_work_commit() {
+        let raw = "feat(loom): add trailer parser\n\nInitial implementation.\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nHeartbeat: 2026-04-05T12:00:00Z";
+        let msg = parse_commit(raw).unwrap();
+        assert_eq!(msg.commit_type, "feat");
+        assert_eq!(msg.scope, Some("loom".into()));
+        assert_eq!(msg.subject, "add trailer parser");
+        assert_eq!(msg.body, Some("Initial implementation.".into()));
+        assert_eq!(msg.trailer("Agent-Id"), Some("ratchet"));
         assert_eq!(
-            commit.body.as_deref(),
-            Some("This explains the why.\nMore context.")
+            msg.trailer("Session-Id"),
+            Some("f8309ae8-ac76-4766-8926-362cdd06d04b")
         );
-        assert_eq!(commit.trailer("Agent-Id"), Some("ratchet"));
+        assert_eq!(msg.trailer("Heartbeat"), Some("2026-04-05T12:00:00Z"));
     }
 
     #[test]
-    fn parse_no_body_trailers_only() {
-        let msg = format!("chore(loom): checkpoint\n\nAgent-Id: ratchet\nSession-Id: {UUID}");
-        let commit = parse_commit_message(&msg).unwrap();
-        assert!(commit.body.is_none());
-        assert_eq!(commit.trailer("Agent-Id"), Some("ratchet"));
+    fn test_parse_assigned_commit() {
+        let raw = "task(ratchet): scaffold loom plugin directory structure\n\nCreate the initial loom/ directory.\n\nAgent-Id: bitswell\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: ASSIGNED\nAssigned-To: ratchet\nAssignment: plugin-scaffold\nScope: loom/**\nDependencies: none\nBudget: 100000";
+        let msg = parse_commit(raw).unwrap();
+        assert_eq!(msg.commit_type, "task");
+        assert_eq!(msg.scope, Some("ratchet".into()));
+        assert_eq!(msg.trailer("Task-Status"), Some("ASSIGNED"));
+        assert_eq!(msg.trailer("Assigned-To"), Some("ratchet"));
+        assert_eq!(msg.trailer("Assignment"), Some("plugin-scaffold"));
+        assert_eq!(msg.trailer("Budget"), Some("100000"));
     }
 
     #[test]
-    fn parse_repeated_trailer_key() {
-        let msg = format!(
-            "feat(loom): done\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nKey-Finding: first finding\nKey-Finding: second finding"
-        );
-        let commit = parse_commit_message(&msg).unwrap();
-        let findings = commit.trailer_all("Key-Finding");
-        assert_eq!(findings, vec!["first finding", "second finding"]);
+    fn test_parse_completed_commit_multiple_key_findings() {
+        let raw = "feat(loom): implement trailer parser\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: COMPLETED\nFiles-Changed: 3\nKey-Finding: parser handles multi-line bodies correctly\nKey-Finding: UUID v4 validation covers all variant bits\nHeartbeat: 2026-04-05T14:00:00Z";
+        let msg = parse_commit(raw).unwrap();
+        assert_eq!(msg.trailer("Task-Status"), Some("COMPLETED"));
+        assert_eq!(msg.trailer("Files-Changed"), Some("3"));
+        let findings = msg.trailers_all("Key-Finding");
+        assert_eq!(findings.len(), 2);
+        assert_eq!(findings[0], "parser handles multi-line bodies correctly");
     }
 
     #[test]
-    fn parse_error_on_empty_message() {
-        assert!(parse_commit_message("").is_err());
+    fn test_parse_no_scope() {
+        let raw = "chore: cleanup\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b";
+        let msg = parse_commit(raw).unwrap();
+        assert_eq!(msg.commit_type, "chore");
+        assert_eq!(msg.scope, None);
     }
 
     #[test]
-    fn parse_error_on_no_colon_space() {
-        assert!(parse_commit_message("notaheader").is_err());
+    fn test_parse_invalid_header() {
+        assert!(parse_commit("no colon here").is_err());
     }
 
-    // ── is_kebab_case ────────────────────────────────────────────────────────
+    // ── Commit validation tests ──
 
-    #[test]
-    fn kebab_case_valid() {
-        assert!(is_kebab_case("ratchet"));
-        assert!(is_kebab_case("plugin-scaffold"));
-        assert!(is_kebab_case("loom-worker"));
-        assert!(is_kebab_case("test1"));
-        assert!(is_kebab_case("a-b-c"));
-    }
-
-    #[test]
-    fn kebab_case_invalid() {
-        assert!(!is_kebab_case(""));
-        assert!(!is_kebab_case("-leading"));
-        assert!(!is_kebab_case("trailing-"));
-        assert!(!is_kebab_case("double--dash"));
-        assert!(!is_kebab_case("Upper"));
-        assert!(!is_kebab_case("has space"));
-    }
-
-    // ── is_valid_uuid_v4 ─────────────────────────────────────────────────────
-
-    #[test]
-    fn uuid_v4_valid() {
-        assert!(is_valid_uuid_v4("f8309ae8-ac76-4766-8926-362cdd06d04b"));
-        assert!(is_valid_uuid_v4("550e8400-e29b-41d4-a716-446655440000"));
-        assert!(is_valid_uuid_v4("6ba7b810-9dad-41d1-80b4-00c04fd430c8"));
-    }
-
-    #[test]
-    fn uuid_v4_invalid_version() {
-        // Version nibble is '3', not '4'.
-        assert!(!is_valid_uuid_v4("f8309ae8-ac76-3766-8926-362cdd06d04b"));
-    }
-
-    #[test]
-    fn uuid_v4_invalid_variant() {
-        // Variant nibble is 'c', not [89ab].
-        assert!(!is_valid_uuid_v4("f8309ae8-ac76-4766-c926-362cdd06d04b"));
-    }
-
-    #[test]
-    fn uuid_v4_invalid_format() {
-        assert!(!is_valid_uuid_v4("not-a-uuid"));
-        assert!(!is_valid_uuid_v4("abc123"));
-        assert!(!is_valid_uuid_v4(""));
-        assert!(!is_valid_uuid_v4("f8309ae8-ac76-4766-8926")); // too short
-    }
-
-    // ── validate_commit ──────────────────────────────────────────────────────
-
-    fn assigned_commit() -> String {
-        format!(
-            "task(ratchet): scaffold plugin\n\nCreate the scaffold.\n\nAgent-Id: bitswell\nSession-Id: {UUID}\nTask-Status: ASSIGNED\nAssigned-To: ratchet\nAssignment: plugin-scaffold\nScope: loom/**\nDependencies: none\nBudget: 100000"
+    fn valid_implementing() -> CommitMessage {
+        parse_commit(
+            "chore(loom): begin implementing trailer parser\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: IMPLEMENTING\nHeartbeat: 2026-04-05T12:00:00Z",
         )
+        .unwrap()
     }
 
-    fn implementing_commit() -> String {
-        format!(
-            "chore(loom): begin implementing\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: IMPLEMENTING\nHeartbeat: 2026-04-05T10:00:00Z"
+    fn valid_completed() -> CommitMessage {
+        parse_commit(
+            "feat(loom): implement trailer parser\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: COMPLETED\nFiles-Changed: 2\nKey-Finding: trailer parser and validator implemented\nHeartbeat: 2026-04-05T14:00:00Z",
         )
-    }
-
-    fn completed_commit() -> String {
-        format!(
-            "feat(loom): implement trailer parser\n\nBuilt the parser.\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: COMPLETED\nFiles-Changed: 3\nKey-Finding: parser handles all LOOM trailer formats\nHeartbeat: 2026-04-05T12:00:00Z"
-        )
+        .unwrap()
     }
 
     #[test]
-    fn valid_assigned_commit() {
-        let errors = validate_commit(&assigned_commit());
-        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    fn test_validate_valid_implementing() {
+        assert_eq!(validate_commit(&valid_implementing()), vec![]);
     }
 
     #[test]
-    fn valid_implementing_commit() {
-        let errors = validate_commit(&implementing_commit());
-        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    fn test_validate_valid_completed() {
+        assert_eq!(validate_commit(&valid_completed()), vec![]);
     }
 
     #[test]
-    fn valid_completed_commit() {
-        let errors = validate_commit(&completed_commit());
-        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    fn test_validate_valid_assigned() {
+        let msg = parse_commit("task(ratchet): scaffold loom plugin\n\nFull description.\n\nAgent-Id: bitswell\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: ASSIGNED\nAssigned-To: ratchet\nAssignment: plugin-scaffold\nScope: loom/**\nDependencies: none\nBudget: 100000").unwrap();
+        assert_eq!(validate_commit(&msg), vec![]);
     }
 
     #[test]
-    fn valid_work_commit_no_status() {
-        let msg = format!(
-            "refactor(loom): extract helper\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nHeartbeat: 2026-04-05T11:00:00Z"
-        );
-        let errors = validate_commit(&msg);
-        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    fn test_validate_valid_blocked() {
+        let msg = parse_commit("chore(loom): blocked -- missing dependency\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: BLOCKED\nBlocked-Reason: dependency loom/moss-loom-worker is not COMPLETED\nHeartbeat: 2026-04-05T13:00:00Z").unwrap();
+        assert_eq!(validate_commit(&msg), vec![]);
     }
 
     #[test]
-    fn valid_blocked_commit() {
-        let msg = format!(
-            "chore(loom): blocked -- missing dep\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: BLOCKED\nBlocked-Reason: dependency not yet merged\nHeartbeat: 2026-04-05T11:00:00Z"
-        );
-        let errors = validate_commit(&msg);
-        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    fn test_validate_valid_failed() {
+        let msg = parse_commit("chore(loom): failed -- unrecoverable error\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: FAILED\nError-Category: internal\nError-Retryable: false").unwrap();
+        assert_eq!(validate_commit(&msg), vec![]);
     }
 
     #[test]
-    fn valid_failed_commit() {
-        let msg = format!(
-            "chore(loom): failed -- unrecoverable\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: FAILED\nError-Category: internal\nError-Retryable: false"
-        );
-        let errors = validate_commit(&msg);
-        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
-    }
-
-    #[test]
-    fn missing_agent_id() {
-        let msg = format!("feat(loom): thing\n\nSession-Id: {UUID}");
+    fn test_validate_missing_agent_id() {
+        let msg = parse_commit("feat(loom): add something\n\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b").unwrap();
         let errors = validate_commit(&msg);
         assert!(
             errors.iter().any(|e| e.message.contains("Agent-Id")),
@@ -737,40 +653,38 @@ mod tests {
     }
 
     #[test]
-    fn missing_session_id() {
-        let msg = "feat(loom): thing\n\nAgent-Id: ratchet";
-        let errors = validate_commit(msg);
-        assert!(
-            errors.iter().any(|e| e.message.contains("Session-Id")),
-            "expected Session-Id error, got: {errors:?}"
-        );
-    }
-
-    #[test]
-    fn invalid_agent_id_not_kebab() {
-        let msg = format!("feat(loom): thing\n\nAgent-Id: MyAgent\nSession-Id: {UUID}");
+    fn test_validate_missing_session_id() {
+        let msg = parse_commit("feat(loom): add something\n\nAgent-Id: ratchet").unwrap();
         let errors = validate_commit(&msg);
         assert!(
-            errors.iter().any(|e| e.message.contains("Agent-Id")),
-            "expected Agent-Id error, got: {errors:?}"
-        );
-    }
-
-    #[test]
-    fn invalid_session_id_not_uuid() {
-        let msg = "feat(loom): thing\n\nAgent-Id: ratchet\nSession-Id: not-a-uuid";
-        let errors = validate_commit(msg);
-        assert!(
             errors.iter().any(|e| e.message.contains("Session-Id")),
             "expected Session-Id error, got: {errors:?}"
         );
     }
 
     #[test]
-    fn invalid_task_status_value() {
-        let msg = format!(
-            "feat(loom): thing\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: UNKNOWN"
+    fn test_validate_invalid_agent_id_format() {
+        let msg = parse_commit("feat(loom): add something\n\nAgent-Id: My Agent\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b").unwrap();
+        let errors = validate_commit(&msg);
+        assert!(
+            errors.iter().any(|e| e.message.contains("kebab-case")),
+            "expected kebab-case error, got: {errors:?}"
         );
+    }
+
+    #[test]
+    fn test_validate_invalid_session_id_format() {
+        let msg = parse_commit("feat(loom): add something\n\nAgent-Id: ratchet\nSession-Id: not-a-uuid").unwrap();
+        let errors = validate_commit(&msg);
+        assert!(
+            errors.iter().any(|e| e.message.contains("UUID v4")),
+            "expected UUID v4 error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_invalid_task_status() {
+        let msg = parse_commit("feat(loom): add something\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: RUNNING").unwrap();
         let errors = validate_commit(&msg);
         assert!(
             errors.iter().any(|e| e.message.contains("Task-Status")),
@@ -779,55 +693,8 @@ mod tests {
     }
 
     #[test]
-    fn assigned_missing_required_trailers() {
-        let msg = format!(
-            "task(ratchet): do thing\n\nAgent-Id: bitswell\nSession-Id: {UUID}\nTask-Status: ASSIGNED\nAssigned-To: ratchet"
-            // missing: Assignment, Scope, Dependencies, Budget
-        );
-        let errors = validate_commit(&msg);
-        assert!(
-            errors.iter().any(|e| e.message.contains("Assignment")),
-            "expected Assignment error, got: {errors:?}"
-        );
-        assert!(
-            errors.iter().any(|e| e.message.contains("Scope")),
-            "expected Scope error, got: {errors:?}"
-        );
-        assert!(
-            errors.iter().any(|e| e.message.contains("Budget")),
-            "expected Budget error, got: {errors:?}"
-        );
-    }
-
-    #[test]
-    fn completed_missing_files_changed() {
-        let msg = format!(
-            "feat(loom): done\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: COMPLETED\nKey-Finding: found something\nHeartbeat: 2026-04-05T12:00:00Z"
-        );
-        let errors = validate_commit(&msg);
-        assert!(
-            errors.iter().any(|e| e.message.contains("Files-Changed")),
-            "expected Files-Changed error, got: {errors:?}"
-        );
-    }
-
-    #[test]
-    fn completed_missing_key_finding() {
-        let msg = format!(
-            "feat(loom): done\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: COMPLETED\nFiles-Changed: 2\nHeartbeat: 2026-04-05T12:00:00Z"
-        );
-        let errors = validate_commit(&msg);
-        assert!(
-            errors.iter().any(|e| e.message.contains("Key-Finding")),
-            "expected Key-Finding error, got: {errors:?}"
-        );
-    }
-
-    #[test]
-    fn implementing_missing_heartbeat() {
-        let msg = format!(
-            "chore(loom): begin\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: IMPLEMENTING"
-        );
+    fn test_validate_implementing_missing_heartbeat() {
+        let msg = parse_commit("chore(loom): begin\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: IMPLEMENTING").unwrap();
         let errors = validate_commit(&msg);
         assert!(
             errors.iter().any(|e| e.message.contains("Heartbeat")),
@@ -836,41 +703,94 @@ mod tests {
     }
 
     #[test]
-    fn failed_invalid_error_category() {
-        let msg = format!(
-            "chore(loom): failed\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: FAILED\nError-Category: oops\nError-Retryable: false"
+    fn test_validate_completed_missing_key_finding() {
+        let msg = parse_commit("feat(loom): done\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: COMPLETED\nFiles-Changed: 1\nHeartbeat: 2026-04-05T14:00:00Z").unwrap();
+        let errors = validate_commit(&msg);
+        assert!(
+            errors.iter().any(|e| e.message.contains("Key-Finding")),
+            "expected Key-Finding error, got: {errors:?}"
         );
+    }
+
+    #[test]
+    fn test_validate_completed_missing_files_changed() {
+        let msg = parse_commit("feat(loom): done\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: COMPLETED\nKey-Finding: something\nHeartbeat: 2026-04-05T14:00:00Z").unwrap();
+        let errors = validate_commit(&msg);
+        assert!(
+            errors.iter().any(|e| e.message.contains("Files-Changed")),
+            "expected Files-Changed error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_blocked_missing_reason() {
+        let msg = parse_commit("chore(loom): blocked\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: BLOCKED\nHeartbeat: 2026-04-05T13:00:00Z").unwrap();
+        let errors = validate_commit(&msg);
+        assert!(
+            errors.iter().any(|e| e.message.contains("Blocked-Reason")),
+            "expected Blocked-Reason error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_failed_missing_error_trailers() {
+        let msg = parse_commit("chore(loom): failed\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: FAILED").unwrap();
         let errors = validate_commit(&msg);
         assert!(
             errors.iter().any(|e| e.message.contains("Error-Category")),
-            "expected Error-Category error, got: {errors:?}"
+            "expected Error-Category error"
         );
-    }
-
-    #[test]
-    fn failed_invalid_error_retryable() {
-        let msg = format!(
-            "chore(loom): failed\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: FAILED\nError-Category: internal\nError-Retryable: yes"
-        );
-        let errors = validate_commit(&msg);
         assert!(
             errors.iter().any(|e| e.message.contains("Error-Retryable")),
-            "expected Error-Retryable error, got: {errors:?}"
+            "expected Error-Retryable error"
         );
     }
 
-    // ── validate_branch_name ─────────────────────────────────────────────────
-
     #[test]
-    fn valid_branch_names() {
-        assert!(validate_branch_name("loom/ratchet-plugin-scaffold").is_empty());
-        assert!(validate_branch_name("loom/moss-migrate-identities").is_empty());
-        assert!(validate_branch_name("loom/bitswell-test-1").is_empty());
+    fn test_validate_failed_invalid_error_category() {
+        let msg = parse_commit("chore(loom): failed\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: FAILED\nError-Category: unknown_type\nError-Retryable: false").unwrap();
+        let errors = validate_commit(&msg);
+        assert!(
+            errors.iter().any(|e| e.message.contains("Error-Category")),
+            "expected Error-Category validation error, got: {errors:?}"
+        );
     }
 
     #[test]
-    fn branch_name_missing_prefix() {
-        let errors = validate_branch_name("ratchet-plugin-scaffold");
+    fn test_validate_invalid_heartbeat_format() {
+        let msg = parse_commit("feat(loom): work\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nHeartbeat: 2026-04-05 12:00:00").unwrap();
+        let errors = validate_commit(&msg);
+        assert!(
+            errors.iter().any(|e| e.message.contains("RFC3339")),
+            "expected RFC3339 error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_assigned_missing_required_trailers() {
+        let msg = parse_commit("task(ratchet): do work\n\nAgent-Id: bitswell\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: ASSIGNED").unwrap();
+        let errors = validate_commit(&msg);
+        let missing: Vec<_> = errors.iter().map(|e| e.message.as_str()).collect();
+        for required in &["Assigned-To", "Assignment", "Scope", "Dependencies", "Budget"] {
+            assert!(
+                missing.iter().any(|m| m.contains(required)),
+                "expected missing {required} error, got: {missing:?}"
+            );
+        }
+    }
+
+    // ── Branch name validation tests ──
+
+    #[test]
+    fn test_validate_branch_valid() {
+        assert_eq!(validate_branch("loom/ratchet-plugin-scaffold"), vec![]);
+        assert_eq!(validate_branch("loom/moss-loom-worker"), vec![]);
+        assert_eq!(validate_branch("loom/test-1"), vec![]);
+    }
+
+    #[test]
+    fn test_validate_branch_no_loom_prefix() {
+        let errors = validate_branch("ratchet-plugin-scaffold");
         assert!(
             errors.iter().any(|e| e.message.contains("loom/")),
             "expected loom/ prefix error, got: {errors:?}"
@@ -878,69 +798,63 @@ mod tests {
     }
 
     #[test]
-    fn branch_name_missing_slug() {
-        let errors = validate_branch_name("loom/ratchet");
-        assert!(!errors.is_empty(), "expected error for missing slug");
+    fn test_validate_branch_no_hyphen() {
+        let errors = validate_branch("loom/ratchet");
+        assert!(
+            errors.iter().any(|e| e.message.contains("hyphen")),
+            "expected hyphen error, got: {errors:?}"
+        );
     }
 
     #[test]
-    fn branch_name_too_long() {
-        let long = format!("loom/ratchet-{}", "x".repeat(60));
-        let errors = validate_branch_name(&long);
+    fn test_validate_branch_uppercase() {
+        let errors = validate_branch("loom/Ratchet-task");
+        assert!(!errors.is_empty(), "expected error for uppercase");
+    }
+
+    #[test]
+    fn test_validate_branch_too_long() {
+        let branch = format!("loom/ratchet-{}", "a".repeat(60));
+        let errors = validate_branch(&branch);
         assert!(
             errors.iter().any(|e| e.message.contains("63")),
             "expected length error, got: {errors:?}"
         );
     }
 
-    #[test]
-    fn branch_name_uppercase_invalid() {
-        let errors = validate_branch_name("loom/Ratchet-scaffold");
-        assert!(!errors.is_empty(), "expected error for uppercase agent name");
+    // ── Branch history validation tests ──
+
+    fn assigned_commit() -> CommitMessage {
+        parse_commit("task(ratchet): do work\n\nFull description.\n\nAgent-Id: bitswell\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: ASSIGNED\nAssigned-To: ratchet\nAssignment: do-work\nScope: loom/**\nDependencies: none\nBudget: 100000").unwrap()
     }
 
-    // ── validate_branch_sequence ─────────────────────────────────────────────
-
     #[test]
-    fn valid_full_sequence() {
-        let messages = vec![
+    fn test_branch_history_valid_full_sequence() {
+        let commits = vec![
             assigned_commit(),
-            implementing_commit(),
-            format!(
-                "refactor(loom): extract helper\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nHeartbeat: 2026-04-05T11:30:00Z"
-            ),
-            completed_commit(),
+            valid_implementing(),
+            valid_completed(),
         ];
-        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
-        let errors = validate_branch_sequence(&refs);
-        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+        assert_eq!(validate_branch_history(&commits), vec![]);
     }
 
     #[test]
-    fn valid_blocked_then_resume() {
-        let blocked = format!(
-            "chore(loom): blocked\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: BLOCKED\nBlocked-Reason: dep missing\nHeartbeat: 2026-04-05T11:00:00Z"
-        );
-        let resume = format!(
-            "chore(loom): resume after blocker resolved\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: IMPLEMENTING\nHeartbeat: 2026-04-05T11:30:00Z"
-        );
-        let messages = vec![
+    fn test_branch_history_valid_with_blocked() {
+        let blocked = parse_commit("chore(loom): blocked\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: BLOCKED\nBlocked-Reason: waiting on dep\nHeartbeat: 2026-04-05T13:00:00Z").unwrap();
+        let resumed = parse_commit("chore(loom): resume\n\nAgent-Id: ratchet\nSession-Id: a1b2c3d4-e5f6-4789-8abc-def012345678\nTask-Status: IMPLEMENTING\nHeartbeat: 2026-04-05T13:30:00Z").unwrap();
+        let commits = vec![
             assigned_commit(),
-            implementing_commit(),
+            valid_implementing(),
             blocked,
-            resume,
-            completed_commit(),
+            resumed,
+            valid_completed(),
         ];
-        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
-        let errors = validate_branch_sequence(&refs);
-        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+        assert_eq!(validate_branch_history(&commits), vec![]);
     }
 
     #[test]
-    fn sequence_first_commit_not_assigned() {
-        let messages = vec![implementing_commit(), completed_commit()];
-        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
-        let errors = validate_branch_sequence(&refs);
+    fn test_branch_history_first_commit_not_assigned() {
+        let errors = validate_branch_history(&[valid_implementing()]);
         assert!(
             errors.iter().any(|e| e.message.contains("ASSIGNED")),
             "expected ASSIGNED error, got: {errors:?}"
@@ -948,65 +862,69 @@ mod tests {
     }
 
     #[test]
-    fn sequence_invalid_transition_assigned_to_completed() {
-        let messages = vec![assigned_commit(), completed_commit()];
-        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
-        let errors = validate_branch_sequence(&refs);
-        assert!(!errors.is_empty(), "expected transition error");
-    }
-
-    #[test]
-    fn sequence_blocked_to_completed_invalid() {
-        let blocked = format!(
-            "chore(loom): blocked\n\nAgent-Id: ratchet\nSession-Id: {UUID}\nTask-Status: BLOCKED\nBlocked-Reason: dep\nHeartbeat: 2026-04-05T11:00:00Z"
-        );
-        let messages = vec![assigned_commit(), implementing_commit(), blocked, completed_commit()];
-        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
-        let errors = validate_branch_sequence(&refs);
+    fn test_branch_history_invalid_transition_assigned_to_completed() {
+        let commits = vec![assigned_commit(), valid_completed()];
+        let errors = validate_branch_history(&commits);
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("BLOCKED") && e.message.contains("COMPLETED")),
-            "expected BLOCKED -> COMPLETED error, got: {errors:?}"
+            errors.iter().any(|e| e.message.contains("invalid state transition")),
+            "expected transition error, got: {errors:?}"
         );
     }
 
     #[test]
-    fn sequence_status_after_terminal() {
-        let after_done = format!(
-            "chore(loom): post-terminal\n\nAgent-Id: bitswell\nSession-Id: {UUID}\nTask-Status: IMPLEMENTING\nHeartbeat: 2026-04-05T13:00:00Z"
-        );
-        let messages = vec![
+    fn test_branch_history_commit_after_terminal() {
+        let work = parse_commit("feat(loom): extra work\n\nAgent-Id: ratchet\nSession-Id: f8309ae8-ac76-4766-8926-362cdd06d04b\nTask-Status: IMPLEMENTING\nHeartbeat: 2026-04-05T15:00:00Z").unwrap();
+        let commits = vec![
             assigned_commit(),
-            implementing_commit(),
-            completed_commit(),
-            after_done,
+            valid_implementing(),
+            valid_completed(),
+            work,
         ];
-        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
-        let errors = validate_branch_sequence(&refs);
+        let errors = validate_branch_history(&commits);
         assert!(
             errors.iter().any(|e| e.message.contains("terminal")),
             "expected post-terminal error, got: {errors:?}"
         );
     }
 
+    // ── Format validator tests ──
+
     #[test]
-    fn sequence_second_assigned_invalid() {
-        let second_assigned = format!(
-            "task(ratchet): reassign\n\nAgent-Id: bitswell\nSession-Id: {UUID}\nTask-Status: ASSIGNED\nAssigned-To: ratchet\nAssignment: retry\nScope: loom/**\nDependencies: none\nBudget: 50000"
-        );
-        let messages = vec![assigned_commit(), implementing_commit(), second_assigned];
-        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
-        let errors = validate_branch_sequence(&refs);
-        assert!(
-            errors.iter().any(|e| e.message.contains("ASSIGNED")),
-            "expected duplicate ASSIGNED error, got: {errors:?}"
-        );
+    fn test_is_kebab_case() {
+        assert!(is_kebab_case("ratchet"));
+        assert!(is_kebab_case("bitswell"));
+        assert!(is_kebab_case("plugin-scaffold"));
+        assert!(is_kebab_case("loom-worker-v2"));
+        assert!(is_kebab_case("test-1"));
+        assert!(!is_kebab_case(""));
+        assert!(!is_kebab_case("Ratchet"));
+        assert!(!is_kebab_case("my agent"));
+        assert!(!is_kebab_case("-leading"));
+        assert!(!is_kebab_case("trailing-"));
+        assert!(!is_kebab_case("double--hyphen"));
     }
 
     #[test]
-    fn empty_sequence() {
-        let errors = validate_branch_sequence(&[]);
-        assert!(!errors.is_empty(), "expected error for empty sequence");
+    fn test_is_uuid_v4() {
+        assert!(is_uuid_v4("f8309ae8-ac76-4766-8926-362cdd06d04b"));
+        assert!(is_uuid_v4("a1b2c3d4-e5f6-4789-8abc-def012345678"));
+        assert!(!is_uuid_v4("not-a-uuid"));
+        assert!(!is_uuid_v4("f8309ae8-ac76-3766-8926-362cdd06d04b")); // version 3, not 4
+        assert!(!is_uuid_v4("f8309ae8-ac76-4766-0926-362cdd06d04b")); // invalid variant
+        assert!(!is_uuid_v4("ratchet-test-1-2026-04-05")); // wrong format
+        assert!(!is_uuid_v4(""));
+    }
+
+    #[test]
+    fn test_is_rfc3339() {
+        assert!(is_rfc3339("2026-04-05T12:00:00Z"));
+        assert!(is_rfc3339("2026-04-03T14:45:00Z"));
+        assert!(is_rfc3339("2026-04-05T12:00:00.123Z"));
+        assert!(is_rfc3339("2026-04-05T12:00:00+05:30"));
+        assert!(is_rfc3339("2026-04-05T12:00:00-07:00"));
+        assert!(!is_rfc3339("2026-04-05 12:00:00Z")); // space instead of T
+        assert!(!is_rfc3339("2026-04-05T12:00:00"));   // no timezone
+        assert!(!is_rfc3339("not-a-date"));
+        assert!(!is_rfc3339(""));
     }
 }
