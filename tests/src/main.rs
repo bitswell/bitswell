@@ -1,3 +1,5 @@
+mod loom;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
