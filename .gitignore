@@ -24,4 +24,4 @@ tests/target/
 webhook/target/
 
 # Agent state
-.mcagent/
+.loom/
