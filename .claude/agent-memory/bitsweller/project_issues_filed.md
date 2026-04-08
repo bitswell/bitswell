@@ -4,7 +4,10 @@ description: Index of all improvement issues filed on the bitsweller branch, wit
 type: project
 ---
 
-9 issues filed as of 2026-03-31, all on the `bitsweller` branch as empty commits:
+10 issues filed as of 2026-04-06 on the `bitsweller` branch as commits:
+
+Note: Issues 1-9 were on a previous bitsweller branch that no longer exists.
+Issue 10 is on the current bitsweller branch (created 2026-04-06 from main).
 
 | # | Title | Priority | Category |
 |---|-------|----------|----------|
@@ -17,6 +20,7 @@ type: project
 | 7 | Inline "What I Found" sections duplicate extracted identity | Medium-high | Duplication/drift |
 | 8 | startup.sh reads task file with no size guard | Low | Resource safety |
 | 9 | Agent seed-answers are 121KB static content dominating agents/ | Medium | Archive lifecycle |
+| 10 | Add loom-context tool for worktree project dir lifecycle | High | New tool / observability |
 
 **Why:** Prevents filing duplicate issues in future sessions.
 
