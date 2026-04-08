@@ -82,7 +82,7 @@ impl TriggerClient {
              The following ASSIGNED commit was detected on a loom/* branch.\n\
              Read CLAUDE.md and AGENT.md, then dispatch the agent.\n\n\
              Event data:\n```json\n{json}\n```\n\n\
-             Run: .claude/skills/loom/loom-dispatch.sh --commit {commit_sha}"
+             Run: loom/bin/loom-dispatch --commit {commit_sha}"
         );
         self.run_with_retry(&prompt).await
     }
