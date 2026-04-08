@@ -1,0 +1,17 @@
+- [Willem — project owner](user_willem.md) — Creator of bitswell, two GitHub accounts
+- [Workflow preferences](feedback_workflow.md) — Git worktrees for agent work, always PR, agents act autonomously
+- [Identity discovery status](project_identity_discovery.md) — 10/1000 Qs answered, v0.3 identity, early phase
+- [Bitsweller issues](project_bitsweller_issues.md) — 9 issues filed on bitsweller branch, none planned yet
+- [Agent pipeline](project_agent_pipeline.md) — Issue->plan->implement->review->approve workflow and first run
+- [GitHub SSH setup](reference_github_ssh.md) — SSH key and host alias for bitswell account push access
+- [.mcagent architecture](project_mcagent_design.md) — Post-LOOM retro: separate agent state from code, commit-based protocol, multi-repo
+- [.mcagent scope bugs](feedback_mcagent_scope.md) — Scope must be worktree-relative; orchestrator needs its own agent file
+- [Agent PWD = worktree](feedback_agent_pwd.md) — Dispatch must cd into worktree before spawning; agent sees . as its workspace
+- [Orchestrator = bitswell](feedback_orchestrator_identity.md) — Agent-Id: bitswell for all orchestrator commits, no separate "orchestrator" entity
+- [Multi-repo via .repos/](project_multi_repo.md) — Single-repo first; external repos as submodules under .repos/; this repo is source of truth
+- [Tests in Rust](feedback_testing_rust.md) — Default to Rust for all testing unless explicitly told otherwise
+- [LOOM protocol for all work](feedback_loom_protocol.md) — Never edit loom-tools directly; dispatch agents through worktrees
+- [LOOM disk layout](project_loom_disk_layout.md) — .loom/agents/<name>/worktrees/ for work, repos/<org>/<repo>/ for submodules only
+- [Use the loom skill properly](feedback_use_loom_skill.md) — Read worker template, two-phase spawn, plan gate — don't hand-craft prompts
+- [Don't auto-remove worktrees](feedback_worktree_cleanup.md) — Keep for inspection; only remove during explicit cleanup
+- [Granular auth testing](feedback_security_testing.md) — Real crypto signing, no mock_all_auths(), add negative tests
