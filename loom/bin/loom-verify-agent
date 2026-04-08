@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# loom-verify-agent — Verify which LOOM agent signed a commit.
+#
+# Usage: loom-verify-agent [<commit>]
+#        loom-verify-agent HEAD
+#        loom-verify-agent abc1234
+#
+# Prints the agent name to stdout if the signature is valid.
+# Exits non-zero and prints "UNSIGNED" to stderr if not.
+#
+# Use cases:
+#   - Event triggers: determine which agent pushed
+#   - Authorization: verify an agent's role before processing
+#   - Audit trails: log who signed what
+#
+# Requirements: Allowed signers at ~/.ssh/loom/allowed_signers
+
+set -euo pipefail
+
+COMMIT="${1:-HEAD}"
+KEY_DIR="$HOME/.ssh/loom"
+ALLOWED="${KEY_DIR}/allowed_signers"
+
+if [[ ! -f "${ALLOWED}" ]]; then
+  echo "Error: allowed_signers file not found at ${ALLOWED}" >&2
+  exit 2
+fi
+
+VERIFY=$(git -c gpg.ssh.allowedSignersFile="${ALLOWED}" log --show-signature -1 "${COMMIT}" 2>&1)
+
+if echo "$VERIFY" | grep -q 'Good "git" signature for'; then
+  AGENT_EMAIL=$(echo "$VERIFY" | grep 'Good "git" signature for' | sed 's/.*Good "git" signature for \([^ ]*\) with.*/\1/')
+  echo "${AGENT_EMAIL%%@*}"
+  exit 0
+else
+  echo "UNSIGNED" >&2
+  exit 1
+fi

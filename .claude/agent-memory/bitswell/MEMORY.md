@@ -1,0 +1,3 @@
+- [LOOM plugin conversion](project_loom_plugin.md) — 8 sub-issues (#41-#48) under #40, branch-based state, no .mcagent/
+- [GitHub project board IDs](reference_project_board.md) — Project/field/option IDs for GraphQL automation
+- [Agent spawning flags](feedback_agent_spawning.md) — Correct CLI flags, sandbox workaround, inline prompts, stagger launches

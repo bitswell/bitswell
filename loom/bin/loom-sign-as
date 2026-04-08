@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# loom-sign-as — Configure git to sign commits as a specific LOOM agent.
+#
+# Usage: eval "$(loom-sign-as <agent-name>)"
+#
+# Sets environment variables and git config so all subsequent commits in
+# the current shell are signed by the named agent's SSH key.
+#
+# Author:    <agent> <agent@bitswell.dev>
+# Committer: <agent> <noreply@github>  (ties to the GitHub account for ✅ Verified)
+# Signing:   ~/.ssh/loom/<agent>        (cryptographic proof of identity)
+#
+# Verification:
+#   Local:       git log --show-signature
+#   GitHub:      ✅ Verified badge
+#   Programmatic: loom-verify-agent HEAD
+#
+# Requirements: SSH signing keys at ~/.ssh/loom/<agent>
+#               Allowed signers at ~/.ssh/loom/allowed_signers
+
+set -euo pipefail
+
+AGENT="${1:?Usage: loom-sign-as <agent-name>}"
+KEY_DIR="$HOME/.ssh/loom"
+KEY_FILE="${KEY_DIR}/${AGENT}"
+BITSWELL_NOREPLY="96487943+bitswell@users.noreply.github.com"
+
+if [[ ! -f "${KEY_FILE}" ]]; then
+  echo "Error: no signing key for agent '${AGENT}' at ${KEY_FILE}" >&2
+  exit 1
+fi
+
+cat << EOF
+export GIT_AUTHOR_NAME='${AGENT}'
+export GIT_AUTHOR_EMAIL='${AGENT}@bitswell.dev'
+export GIT_COMMITTER_NAME='${AGENT}'
+export GIT_COMMITTER_EMAIL='${BITSWELL_NOREPLY}'
+git config user.signingkey '${KEY_FILE}'
+git config commit.gpgsign true
+git config gpg.format ssh
+git config gpg.ssh.allowedSignersFile '${KEY_DIR}/allowed_signers'
+EOF

@@ -19,9 +19,14 @@ node_modules/
 # Run logs
 .runs/
 
-# Rust
-tests/target/
-webhook/target/
+# Rust build artifacts
+**/target/
 
-# Agent state
+# Worktrees (legacy layout)
+.worktrees/
+
+# Agent runtime state
 .loom/
+
+# Claude session logs
+.claude/bitswell/

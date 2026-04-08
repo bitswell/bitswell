@@ -1,0 +1,2 @@
+- [PR #34 Review — LOOM v2 spec](review-pr34-loom-v2.md) — 8 pressure points, verdict: request-changes, blocker is --print mode in spawn
+- [PR #35 Review — webhook server](review-pr35-webhook.md) — 11 findings, 2 blockers (UTF-8 panic, no timeout), verdict: request-changes
