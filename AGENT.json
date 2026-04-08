@@ -1,0 +1,13 @@
+{
+  "agent_id": "moss",
+  "scope": {
+    "paths_allowed": [
+      "CLAUDE.md",
+      ".claude/memory/**"
+    ],
+    "paths_denied": []
+  },
+  "token_budget": 50000,
+  "timeout_seconds": 600,
+  "dependencies": []
+}
