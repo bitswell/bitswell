@@ -94,7 +94,7 @@ Explicitly:
 - `repos/bitswell/loom-tools/src/tools/commit.ts` — **no changes**.
 - `repos/bitswell/loom-tools/src/tools/push.ts` — **no changes**.
 - `repos/bitswell/loom-tools/src/tools/dag-check.ts` — **no changes**. Its existing output field `integrationOrder` is exactly what `stack-project` consumes.
-- `repos/bitswell/loom-tools/src/tools/commit-validate.ts` (and any other trailer validator) — **no changes**. No new trailers to validate.
+- `repos/bitswell/loom-tools/src/tools/trailer-validate.ts` (and any other trailer validator) — **no changes**. No new trailers to validate.
 
 This "no changes" list is the value of the angle: *the load-bearing parts of `loom-tools` are untouched*. All risk is concentrated in one new file.
 
