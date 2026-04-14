@@ -69,25 +69,43 @@ This section enumerates every component that changes, every file path that is to
 
 ### 3.2 Role enum expansion
 
-**File:** `repos/bitswell/loom-tools/src/types/tool.ts`
+**File:** `repos/bitswell/loom-tools/src/types/role.ts` (the role enum lives here; `src/types/tool.ts` only imports `ProtocolRole` from `./role.js` and uses it as the type of the `roles: readonly ProtocolRole[]` field on `ToolDefinition`).
 
-**Current state:** `roles` is effectively binary — tools are either `['orchestrator']` (see `pr-create.ts` line 27) or unrestricted. The type definition that gates this is the `roles` field on the `ToolDefinition` interface.
+**Current state:** `ProtocolRole` is a three-value union — `'writer' | 'reviewer' | 'orchestrator'`. Tools are either scoped to a specific role (e.g. `['orchestrator']`, see `pr-create.ts` line 27) or unrestricted. LOOM calls workers *writers* in the role enum; the proposal uses "worker" in prose but the enum value is `writer`.
 
-**Change:** add a third role value, `worker-stack-driver`, as a strict superset of `worker` for stack-epic assignments only.
+**Change:** add a new role value, `worker-stack-driver`, to `ProtocolRole` as a strict superset of `writer` for stack-epic assignments only. The `canAccess` helper in `role.ts` is extended so that `worker-stack-driver` is granted all tools gated on `writer` plus tools gated explicitly on `worker-stack-driver`.
 
 ```ts
-// repos/bitswell/loom-tools/src/types/tool.ts (amended)
-export type Role = 'orchestrator' | 'worker' | 'worker-stack-driver';
-export interface ToolDefinition<I, O> {
-  name: string;
-  description: string;
-  inputSchema: z.ZodType<I>;
-  outputSchema: z.ZodType<O>;
-  roles: Role[];
+// repos/bitswell/loom-tools/src/types/role.ts (amended)
+export type ProtocolRole =
+  | 'writer'
+  | 'reviewer'
+  | 'orchestrator'
+  | 'worker-stack-driver';
+
+export const PROTOCOL_ROLES: readonly ProtocolRole[] = [
+  'writer',
+  'reviewer',
+  'orchestrator',
+  'worker-stack-driver',
+] as const;
+
+export function canAccess(
+  agentRole: ProtocolRole,
+  toolRoles: readonly ProtocolRole[],
+): boolean {
+  if (agentRole === 'orchestrator') return true;
+  if (agentRole === 'worker-stack-driver') {
+    // stack-driver inherits writer access plus its own scoped tools
+    return toolRoles.includes('writer') || toolRoles.includes('worker-stack-driver');
+  }
+  return toolRoles.includes(agentRole);
 }
 ```
 
-**Enforcement:** the MCP dispatch layer already checks `roles` on every tool call and rejects unauthorised callers. The new role value is checked the same way. A worker running without `Stack-Epic: true` cannot successfully call `stack-worker-init` because the handler refuses and because the dispatch guard blocks the `worker-stack-driver` role from being asserted on non-stack-epic sessions.
+`src/types/tool.ts` does not need to change — its `roles: readonly ProtocolRole[]` field picks up the new value automatically because it imports from `./role.js`.
+
+**Enforcement:** the MCP dispatch layer already checks `roles` on every tool call and rejects unauthorised callers. The new role value is checked the same way. A writer running without `Stack-Epic: true` cannot successfully call `stack-worker-init` because the handler refuses and because the dispatch guard blocks the `worker-stack-driver` role from being asserted on non-stack-epic sessions.
 
 ### 3.3 Plugin / loom skill surface
 
