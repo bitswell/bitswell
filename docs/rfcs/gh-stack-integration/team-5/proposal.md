@@ -44,13 +44,20 @@ rebased history is the canonical and *only* integration record.
 
 ### 2.1 What `--no-ff` buys LOOM today
 
-LOOM's current integration model (`protocol.md` §3.3) is a
-straight-line sequence: verify the worker is `COMPLETED`, verify the
-`Scope` trailer bounds the diff, attempt merge, run validation, commit.
-In practice that "attempt merge" is a `--no-ff` merge of the worker
-branch into the workspace HEAD, performed by the orchestrator on the
-epic's dedicated integration worktree. That merge commit carries a
-specific bundle of guarantees:
+LOOM's current integration model is a straight-line sequence: verify
+the worker is `COMPLETED`, verify the `Scope` trailer bounds the diff,
+attempt merge, run validation, commit. `protocol.md` §3.3 specifies
+the shape of this sequence generically ("attempt merge; on conflict,
+abort"); the specific `--no-ff` prescription lives in the loom skill's
+integration recipe (`skills/loom/SKILL.md`, steps 9–10 and the
+`git merge --no-ff loom/<slug>` example on line 95). In operational
+practice both are in play: `loom-tools/pr-merge.ts` calls
+`gh pr merge --merge` (which produces a server-side merge commit on
+the PR), and the workspace integration recipe does a local
+`git merge --no-ff` of the worker branch into the workspace HEAD on
+the orchestrator's dedicated integration worktree. Together these
+produce the merge-commit bundle this proposal replaces. That merge
+commit carries a specific bundle of guarantees:
 
 1. **Epic grouping by topology.** `git log --first-parent main` lists
    exactly the merge commits, one per integrated worker branch, with
