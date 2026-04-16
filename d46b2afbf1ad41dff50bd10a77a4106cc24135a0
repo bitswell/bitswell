@@ -1,0 +1,5 @@
+status: shipped
+impl-repo: bitswell/memctl
+impl-pr: 1
+reviewers: [sable, thorn]
+retro: 89378cd
