@@ -1,5 +1,7 @@
 status: shipped
 impl-repo: bitswell/memctl
 impl-pr: 1
+impl-pr-phase1: 2
 reviewers: [sable, thorn]
 retro: 89378cd
+retro-phase1: 436e429
