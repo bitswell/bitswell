@@ -30,3 +30,23 @@ node_modules/
 
 # Claude session logs
 .claude/bitswell/
+
+# Sandbox home-file bind mounts (appear as /dev/null char devices in sandbox)
+/.bash_profile
+/.bashrc
+/.profile
+/.zshrc
+/.zprofile
+/.gitconfig
+/.ripgreprc
+
+# Claude runtime / sandbox mounts at top-level
+/.claude/commands
+/.claude/skills
+/.claude/agent-memory/
+/.mcp.json
+/.playwright-mcp/
+
+# tasks/*.md are protocol artifacts (see tasks/README.md) — they ARE tracked.
+# Coordinator agents (bitswell, vesper) must write them from a worktree+PR,
+# not in the primary checkout. See CLAUDE.md "Development Workflow".

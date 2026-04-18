@@ -14,6 +14,9 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 LOG_DIR="$REPO_DIR/.runs"
 TASK_DIR="$REPO_DIR/tasks"
 
+# Activate versioned git hooks (primary-worktree guard).
+git -C "$REPO_DIR" config core.hooksPath scripts/hooks
+
 # Show queue status
 show_status() {
   echo "Task queue:"

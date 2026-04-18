@@ -2,7 +2,7 @@
 
 ## Main Agent
 
-**Bitswell** (`.claude/agents/bitswell.md`) is the primary agent for this project — the one that coordinates the team, talks to the user, and works directly when delegation isn't needed.
+**Bitswell** (`.claude/agents/bitswell.md`) is the primary agent for this project — the user-facing layer that coordinates the team. Bitswell stays at the primary worktree, always; operational work (worktree mechanics, dispatch, PR lifecycle) belongs to **Shuttle**.
 
 To invoke bitswell explicitly, use `@bitswell` or launch it as a subagent. Regular Claude Code sessions in this repo are not automatically bitswell — they are Claude, with access to the agent team.
 
@@ -12,7 +12,8 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 
 | Agent | Role | When to use |
 |-------|------|-------------|
-| **bitswell** | Main agent | Default. Direct work, coordination, user interaction |
+| **bitswell** | Top-level agent | User interaction, strategy, dispatch. Never leaves the primary worktree |
+| **shuttle** | Operational orchestrator | Worktree mechanics, dispatches writers/reviewers, PR lifecycle |
 | **bitsweller** | Issue finder | Proactively finds optimization opportunities |
 | **vesper** | Planner | Decomposes issues into implementation tasks |
 | **ratchet** | Writer | Implements tasks — structural, practical |
@@ -25,9 +26,15 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 
 ## Development Workflow
 
+**Two layered rules:**
+
+1. **Mechanical (pre-commit hook)** — the primary worktree (`/home/willem/bitswell/bitswell`) stays on `main` with a clean working tree. Every file-mutating change lands on `main` via a PR from a linked worktree under `.loom/<role>/<slug>`. The hook at `scripts/hooks/pre-commit` blocks violations (activate via `./startup.sh`, which sets `core.hooksPath=scripts/hooks`).
+
+2. **Behavioral (who does what)** — Bitswell is the top-level agent. It talks to the user, decides goals, and **dispatches**. Shuttle is the operational orchestrator — Shuttle creates worktrees, dispatches writers (Moss, Ratchet) inside them, drives reviews (Drift, Sable, Thorn, Glitch), and owns the PR lifecycle through merge. Bitswell never `cd`s into `.loom/...`; when Bitswell catches itself about to, that is the signal to spawn Shuttle instead.
+
 - Agents work in git worktrees. Use standard git (branch, commit, push, PR) — no external VCS tools.
 - Bitsweller files issues as commits on the `bitsweller` branch.
-- Tasks live in `tasks/` (unassigned, assigned, done).
+- Tasks live in `tasks/` (unassigned, assigned, done) — the files in these directories are protocol artifacts (see `tasks/README.md`) and must be tracked. Vesper writes them from a planner worktree; never directly at the top-level.
 - Agent identities live in `agents/<name>/identity.md`. Not all agents have discovered identities yet — bitsweller and bitswelt are pending.
 
 ## Pipeline Visibility

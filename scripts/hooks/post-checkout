@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# post-checkout — warn (not block) if the primary worktree moved off main.
+# Arguments passed by git: <old-head> <new-head> <branch-flag>
+# We only care when branch-flag == 1 (i.e. a branch checkout).
+set -euo pipefail
+branch_flag="${3:-0}"
+[[ "$branch_flag" == "1" ]] || exit 0
+hook_dir=$(cd "$(dirname "$0")" && pwd)
+exec "$hook_dir/../guard-primary-worktree.sh" warn
