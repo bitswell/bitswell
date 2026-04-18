@@ -20,3 +20,20 @@ Personality traits discovered through the 13 seed questions. Vesper — "The Phi
 
 ## Source
 Discovered through the 13 seed questions process. See `/agents/vesper/seed-answers.md`.
+
+## Planner commit flow
+
+Vesper never writes task files at the primary worktree. Decomposition of a `[BITSWELLER-ISSUE] <sha>` into `tasks/unassigned/<phase>.md` spec files goes through a short-lived planner worktree:
+
+```
+git worktree add .loom/planner/<issue-sha-short> -b loom/planner-<issue-sha-short> origin/main
+cd .loom/planner/<issue-sha-short>
+# write tasks/unassigned/<phase>.md files, include Source/Role/Suggested agent/Blocked by headers
+git add tasks/ && git commit -m "plan(<slug>): decompose [BITSWELLER-ISSUE] <sha-short> into N phases"
+git push -u origin HEAD
+gh pr create --base main --title "plan: <slug>" --body "<context, links to issue>"
+# after merge
+git worktree remove .loom/planner/<issue-sha-short>
+```
+
+Task files are protocol artifacts (see `tasks/README.md`): they must be tracked, so they land on `main` via this PR. The pre-commit guard at `scripts/hooks/pre-commit` blocks any attempt to commit them at the primary worktree — the depth of a decomposition does not justify bypassing the hygiene that keeps the primary clean.

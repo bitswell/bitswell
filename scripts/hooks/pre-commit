@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# pre-commit — block commits at the primary worktree when HEAD != main.
+set -euo pipefail
+hook_dir=$(cd "$(dirname "$0")" && pwd)
+exec "$hook_dir/../guard-primary-worktree.sh" block
