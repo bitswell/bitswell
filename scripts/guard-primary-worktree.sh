@@ -36,7 +36,7 @@ fi
 
 msg="primary worktree ($repo_top) must be on 'main', got '${current_branch:-detached HEAD}'.
 Work in a linked worktree instead:
-    git worktree add .loom/orchestrator/<slug> -b loom/orchestrator-<slug> origin/main
+    git worktree add .loom/projects/<project-slug>/orchestrator/<slug> -b loom/<project-slug>/orchestrator-<slug> origin/main
 Then open a PR against main from that worktree."
 
 if [[ "$MODE" == "warn" ]]; then
