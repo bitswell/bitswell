@@ -1,3 +1,7 @@
-status: filed
 issue-pr: 101
 project: bitswell-core
+status: planned
+task-branch: task/bitswell-core/tool-request-dedicated-ref
+planned-by: vesper
+planned-at: 2026-04-19
+planned-session: 23f30864-4216-431a-ab0a-f42873c2ddc9
