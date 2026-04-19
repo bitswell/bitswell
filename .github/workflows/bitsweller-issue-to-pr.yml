@@ -1,0 +1,198 @@
+# Bitsweller Issue → Draft PR (dual-write mirror)
+#
+# Part of the "PR-as-issue" migration: every [BITSWELLER-ISSUE] commit on the
+# `bitsweller` branch is mirrored as a draft PR against `main`, so issues
+# become browsable in the regular GitHub PR UI while the bitsweller branch
+# remains authoritative. This is the dual-write phase — both projections
+# exist; consumers can read either.
+#
+# Idempotency: each mirrored PR carries a `Source-Issue-Sha: <sha>` line in
+# its body. Before opening a PR we search for that sentinel across all PR
+# states; if a match exists we skip. Re-running the workflow (via push or
+# workflow_dispatch) over already-mirrored commits is a safe no-op.
+#
+# Notes: on success we seed `refs/notes/pipeline` on the source bitsweller
+# commit with `status: filed`, `issue-pr: <num>`, `project: <slug>`, merged
+# with any keys the note already had (so downstream writers like bitswelt
+# don't get clobbered).
+
+name: Bitsweller Issue to PR
+
+on:
+  push:
+    branches: [bitsweller]
+  workflow_dispatch:
+    inputs:
+      backfill_depth:
+        description: 'How many recent bitsweller commits to consider (workflow_dispatch only)'
+        required: false
+        default: '1'
+        type: string
+      dry_run:
+        description: 'Log actions without opening PRs or writing notes'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bitsweller-issue-to-pr
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout main with full history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch bitsweller and pipeline notes
+        run: |
+          set -euo pipefail
+          git fetch origin bitsweller main 'refs/notes/pipeline:refs/notes/pipeline' 2>/dev/null || true
+
+      - name: Configure git identity
+        run: |
+          set -euo pipefail
+          git config user.email "bitsweller-issue-to-pr@users.noreply.github.com"
+          git config user.name  "bitsweller-issue-to-pr[bot]"
+
+      - name: Mirror [BITSWELLER-ISSUE] commits to draft PRs
+        id: mirror
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_AFTER: ${{ github.event.after }}
+          BACKFILL_DEPTH: ${{ inputs.backfill_depth || '1' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+
+          zero=0000000000000000000000000000000000000000
+          shas=""
+
+          if [ "$EVENT_NAME" = "push" ]; then
+            if [ "${EVENT_AFTER:-$zero}" = "$zero" ]; then
+              echo "Branch deleted (after=$zero); nothing to mirror."
+              echo "created=0" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ -z "${EVENT_BEFORE:-}" ] || [ "$EVENT_BEFORE" = "$zero" ]; then
+              # First push or force-push — only mirror the tip commit.
+              shas=$(git log --format='%H' -n 1 "$EVENT_AFTER" 2>/dev/null || true)
+            else
+              shas=$(git log --format='%H' --reverse "${EVENT_BEFORE}..${EVENT_AFTER}" 2>/dev/null || true)
+            fi
+          else
+            shas=$(git log origin/bitsweller --format='%H' -n "$BACKFILL_DEPTH" 2>/dev/null | tac || true)
+          fi
+
+          created=0
+          if [ -z "${shas:-}" ]; then
+            echo "No commits to process."
+            echo "created=$created" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Processing $(printf '%s\n' "$shas" | wc -l) commit(s)."
+
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+
+            subject=$(git log -1 --format='%s' "$sha")
+            case "$subject" in
+              '[BITSWELLER-ISSUE]'*) ;;
+              *) echo "skip $sha: subject does not start with [BITSWELLER-ISSUE]"; continue ;;
+            esac
+
+            body=$(git log -1 --format='%b' "$sha")
+            project=$(git log -1 --format='%(trailers:key=Project,valueonly)' "$sha" | head -n1 | xargs || true)
+            if [ -z "$project" ]; then
+              project="bitswell-core"
+            fi
+
+            existing_pr=$(gh pr list --state all --search "Source-Issue-Sha: $sha" --json number --limit 1 -q '.[0].number' 2>/dev/null || true)
+            if [ -n "$existing_pr" ]; then
+              echo "skip $sha: PR #$existing_pr already mirrors this commit"
+              continue
+            fi
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "dry-run: would create PR for $sha (project=$project) — \"$subject\""
+              continue
+            fi
+
+            short_sha=${sha:0:12}
+            branch="issue/${short_sha}"
+
+            if git ls-remote --heads origin "$branch" | grep -q .; then
+              echo "skip $sha: remote branch $branch already exists"
+              continue
+            fi
+
+            commit_url="${SERVER_URL}/${REPO}/commit/${sha}"
+
+            git checkout -B "$branch" origin/main
+
+            commit_msg=$(printf '%s\n\n%s\n\nSource-Issue-Sha: %s\nProject: %s\n' \
+              "$subject" "$body" "$sha" "$project")
+            git commit --allow-empty -m "$commit_msg"
+            git push origin "$branch"
+
+            pr_body=$(printf '%s\n\n---\n_Filed as `[BITSWELLER-ISSUE]` commit [`%s`](%s) on the `bitsweller` branch._\n\nSource-Issue-Sha: `%s`\nProject: `%s`\n' \
+              "$body" "$short_sha" "$commit_url" "$sha" "$project")
+
+            pr_url=$(gh pr create --draft --base main --head "$branch" \
+              --title "$subject" --body "$pr_body")
+            pr_num="${pr_url##*/}"
+            echo "created PR #$pr_num for $sha"
+
+            gh label create "project:$project" --color 0052cc \
+              --description "Mirrored from bitsweller project: $project" 2>/dev/null || true
+            gh pr edit "$pr_num" --add-label "project:$project" 2>/dev/null || true
+
+            existing_note=$(git notes --ref=pipeline show "$sha" 2>/dev/null || true)
+            filtered_note=""
+            if [ -n "$existing_note" ]; then
+              filtered_note=$(printf '%s\n' "$existing_note" | grep -vE '^(status|issue-pr|project):[[:space:]]*' || true)
+            fi
+            new_note=$(
+              { [ -n "$filtered_note" ] && printf '%s\n' "$filtered_note"
+                printf 'status: filed\nissue-pr: %s\nproject: %s\n' "$pr_num" "$project"
+              }
+            )
+            printf '%s' "$new_note" | git notes --ref=pipeline add -f -F - "$sha"
+
+            created=$((created + 1))
+          done <<< "$shas"
+
+          if [ "$DRY_RUN" != "true" ] && [ "$created" -gt 0 ]; then
+            git push origin refs/notes/pipeline 2>/dev/null || true
+          fi
+
+          echo "created=$created" >> "$GITHUB_OUTPUT"
+          echo "Mirrored $created new PR(s)."
+
+      - name: Write job summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "### Bitsweller issue mirror"
+            echo ""
+            echo "- Event: \`${{ github.event_name }}\`"
+            echo "- Dry run: \`${{ inputs.dry_run || 'false' }}\`"
+            echo "- New PRs mirrored: \`${{ steps.mirror.outputs.created || '0' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
