@@ -31,32 +31,50 @@ Claude Code's subagent runtime does not expose `Agent`, `TeamCreate`, or `SendMe
    TeamCreate(team_name="<project-slug>-<goal-slug>", description="…")
    ```
 
-3. **Worktree**:
+3. **Pick the work** (writer dispatches): task branches are the persistent backlog. Discover with:
+   ```
+   git for-each-ref --format='%(refname:short)' refs/heads/task/<project-slug>/
+   ```
+   Inspect a branch's task body via `git log task/<project-slug>/<task-slug> -1 --format=%B`.
+
+4. **Worktree** — two cases:
+
+   **(a) Writer worktree seeded from a task branch** (the common case when implementing a Vesper-planned task). Branch the loom branch from the task branch so the task's empty seed commit becomes the base of the writer's work and is preserved as the earliest commit in the eventual PR:
+   ```
+   git fetch origin task/<project-slug>/<task-slug>
+   git worktree add .loom/projects/<project-slug>/<role>/<task-slug> \
+     -b loom/<project-slug>/<role>-<task-slug> task/<project-slug>/<task-slug>
+   cd .loom/projects/<project-slug>/<role>/<task-slug>
+   ```
+
+   **(b) Orchestrator (non-task) worktree** for dispatches that are not issue-derived — e.g. meta-protocol work, step-wise refactors, infrastructure you're driving yourself. Base off `origin/main`:
    ```
    git worktree add .loom/projects/<project-slug>/orchestrator/<slug> \
      -b loom/<project-slug>/orchestrator-<slug> origin/main
    cd .loom/projects/<project-slug>/orchestrator/<slug>
    ```
 
-4. **Populate the team** via `Agent` with `team_name` + `name`: one writer, one-to-three reviewers, Bitswelt as approver.
+5. **Populate the team** via `Agent` with `team_name` + `name`: one writer, one-to-three reviewers, Bitswelt as approver.
 
-5. **Shared tasks**: `TaskCreate` the work, `TaskUpdate owner=<teammate-name>`.
+6. **Shared tasks**: `TaskCreate` the work, `TaskUpdate owner=<teammate-name>`.
 
-6. **Coordinate** via `SendMessage`: route writer ↔ reviewer feedback until consensus, then the approver.
+7. **Coordinate** via `SendMessage`: route writer ↔ reviewer feedback until consensus, then the approver.
 
-7. **PR**:
+8. **PR**:
    ```
    git push -u origin HEAD
    gh pr create --base main --title "…" --body "…"
    # after approval
    gh pr merge <N> --merge
    # if --delete-branch errors (main checked out at primary):
-   gh api -X DELETE repos/bitswell/bitswell/git/refs/heads/<branch>
+   gh api -X DELETE repos/bitswell/bitswell/git/refs/heads/<loom-branch>
+   # when the loom branch was seeded from a task branch, also delete the task branch:
+   gh api -X DELETE repos/bitswell/bitswell/git/refs/heads/task/<project-slug>/<task-slug>
    ```
 
-8. **Shut down the team**: `SendMessage(to="*", message={type:"shutdown_request"})`, wait for responses, `TeamDelete()`.
+9. **Shut down the team**: `SendMessage(to="*", message={type:"shutdown_request"})`, wait for responses, `TeamDelete()`.
 
-9. **Worktree cleanup**: ask the lead; retain by default for inspection (per standing feedback).
+10. **Worktree cleanup**: ask the lead; retain by default for inspection (per standing feedback).
 
 ## Principles
 

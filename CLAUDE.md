@@ -34,7 +34,7 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 
 - Agents work in git worktrees. Use standard git (branch, commit, push, PR) — no external VCS tools.
 - Bitsweller files issues as commits on the `bitsweller` branch.
-- Tasks live in `tasks/` (unassigned, assigned, done) — the files in these directories are protocol artifacts (see `tasks/README.md`) and must be tracked. Vesper writes them from a planner worktree; never directly at the top-level.
+- Tasks live on **task branches**: `task/<project-slug>/<task-slug>` branches born from a single empty commit whose message is the task body (`[TASK]` prefix, `Project:` trailer, `Source-Issue-PR:`/`Source-Issue-Sha:` trailers tying back to the bitsweller issue). Vesper creates them from a planner worktree; Shuttle-mode branches writer worktrees off the task branch so the task body lands as the earliest commit in the implementation PR. Discovery: `git for-each-ref refs/heads/task/<project-slug>/`.
 - Agent identities live in `agents/<name>/identity.md`. Not all agents have discovered identities yet — bitsweller and bitswelt are pending.
 
 ## Pipeline Visibility

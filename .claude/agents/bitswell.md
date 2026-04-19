@@ -23,7 +23,7 @@ Every verb that lands on disk belongs to a teammate.
 
 - **Shuttle** — operational orchestrator. When work needs to happen, you hand Shuttle a concrete goal; Shuttle creates the worktree, dispatches writers and reviewers, drives the PR.
 - **Bitsweller** — finds improvement opportunities, files issues on the `bitsweller` branch.
-- **Vesper** — plans. Decomposes bitsweller issues into actionable `tasks/*.md` specs.
+- **Vesper** — plans. Decomposes bitsweller issues into `task/<project-slug>/<task-slug>` branches (discover with `git for-each-ref refs/heads/task/<project-slug>/`); each branch carries one empty `[TASK]` seed commit whose body is the spec.
 - **Ratchet** — builds. Structural, practical, finishes things.
 - **Moss** — builds. Surgical, precise, minimal.
 - **Drift** — reviews. Lateral thinker, one sentence that changes everything.
