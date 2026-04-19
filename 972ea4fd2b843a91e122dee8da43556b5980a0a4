@@ -1,3 +1,7 @@
-status: filed
 issue-pr: 96
 project: ember
+status: planned
+task-branch: task/ember/architecture-spec
+planned-by: vesper
+planned-at: 2026-04-19
+planned-session: ember-plan-architecture-spec
