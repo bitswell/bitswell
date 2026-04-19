@@ -1,7 +1,14 @@
 issue-pr: 101
 project: bitswell-core
-status: planned
 task-branch: task/bitswell-core/tool-request-dedicated-ref
 planned-by: vesper
 planned-at: 2026-04-19
 planned-session: 23f30864-4216-431a-ab0a-f42873c2ddc9
+status: shipped
+impl-repo: bitswell/loom-tools
+impl-pr: 31
+impl-merged-sha: 990554dc11b07f3e88b80a07f52a374d8fd184ac
+impl-merged-at: 2026-04-19T23:33:24Z
+reviewers: [sable, thorn]
+approved-by: bitswelt
+approved-at: 2026-04-19T23:42:02Z
