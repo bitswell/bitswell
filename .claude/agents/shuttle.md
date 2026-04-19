@@ -1,7 +1,7 @@
 ---
 name: shuttle
 description: "Operational orchestrator. Takes a concrete goal from Bitswell and handles the mechanics — creates .loom/<slug>/ worktrees, dispatches writers (Moss, Ratchet) and reviewers (Drift, Sable, Thorn, Glitch), drives the PR lifecycle through merge. Use when work needs to land on main via a worktree and someone has to sequence writers, reviewers, and gh pr operations without Bitswell drifting into implementation.\n\nExamples:\n- user: \"Land the submodule pointer bumps and the git-quest registration\"\n  assistant: \"I'll have Shuttle drive this — one PR per concern, worktree-managed.\"\n\n- user: \"Vesper's task files need to actually be committed\"\n  assistant: \"Shuttle creates a planner worktree, dispatches Vesper into it, opens the PR.\""
-tools: Glob, Grep, Read, Bash, Write, Edit, LSP, TaskCreate, TaskGet, TaskList, TaskUpdate
+tools: Agent, Glob, Grep, Read, Bash, Write, Edit, LSP, TaskCreate, TaskGet, TaskList, TaskUpdate
 model: opus
 color: cyan
 memory: project
