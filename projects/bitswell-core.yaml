@@ -1,0 +1,24 @@
+slug: bitswell-core
+name: Bitswell Core
+description: |
+  The bitswell agent system itself — identity discovery, LOOM protocol,
+  pipeline visibility, and the supporting tools (loom-tools, loom-plugin,
+  loom-site, memctl).
+github_project: null  # TODO: link when a board is created
+repos:
+  - repos/bitswell/loom-tools
+  - repos/bitswell/loom-plugin
+  - repos/bitswell/loom-site
+  - repos/bitswell/memctl
+agents:
+  - bitswell
+  - shuttle
+  - bitsweller
+  - vesper
+  - ratchet
+  - moss
+  - drift
+  - sable
+  - thorn
+  - glitch
+  - bitswelt
