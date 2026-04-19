@@ -1,0 +1,21 @@
+slug: ember
+name: Ember
+description: |
+  Small always-on Hetzner orchestrator (the pilot light) that summons
+  ephemeral RunPod GPU workers on demand, tied together with a private
+  Tailscale mesh. €4/mo ember fans into flame when compute is needed,
+  returns to ember when idle.
+github_project: null  # TODO: link when a board is created
+repos: []  # Greenfield — repos scaffold as the project develops
+agents:
+  - bitswell
+  - shuttle
+  - bitsweller
+  - vesper
+  - ratchet
+  - moss
+  - drift
+  - sable
+  - thorn
+  - glitch
+  - bitswelt
