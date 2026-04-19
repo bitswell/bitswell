@@ -37,6 +37,10 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 - Tasks live on **task branches**: `task/<project-slug>/<task-slug>` branches born from a single empty commit whose message is the task body (`[TASK]` prefix, `Project:` trailer, `Source-Issue-PR:`/`Source-Issue-Sha:` trailers tying back to the bitsweller issue). Vesper creates them from a planner worktree; Shuttle-mode branches writer worktrees off the task branch so the task body lands as the earliest commit in the implementation PR. Discovery: `git for-each-ref refs/heads/task/<project-slug>/`.
 - Agent identities live in `agents/<name>/identity.md`. Not all agents have discovered identities yet — bitsweller and bitswelt are pending.
 
+## Sandbox Obstacles → Missing Tools
+
+When a command is blocked by the sandbox (filesystem write denied, network host not allowed, approval prompt), **first ask: is there a missing tool?** The right fix is usually a dedicated helper script (`scripts/pipeline-note-set.sh` is the canonical example — the sandbox made the inline `git notes append` idiom friction-prone, so we lifted it into a script) or a proper MCP tool that does the operation within sandbox constraints. Reach for `dangerouslyDisableSandbox: true` only after considering whether the friction is pointing at a gap to fill. Every recurring sandbox-escape is evidence a tool wants to exist.
+
 ## Pipeline Visibility
 
 Three git-native mechanisms track work from issue through merge:
