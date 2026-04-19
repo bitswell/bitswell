@@ -41,7 +41,7 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 
 Three git-native mechanisms track work from issue through merge:
 
-- **`refs/notes/pipeline`** — YAML notes attached to bitsweller issue commits. Track status (`filed → planned → assigned → in-review → shipped → abandoned`), implementation PR, reviewers, and retro link. Written by bitsweller (filed), vesper (planned), bitswell (assigned), bitswelt (shipped). Fetch with `git fetch origin refs/notes/pipeline:refs/notes/pipeline`, view with `git log bitsweller --show-notes=pipeline`.
+- **`refs/notes/pipeline`** — YAML notes attached to bitsweller issue commits. Track status (`filed → planned → assigned → in-review → shipped → abandoned`), implementation PR, reviewers, and retro link. Written by the `bitsweller-issue-to-pr` GHA (filed), vesper (planned), bitswell (assigned), bitswelt (shipped), all via `scripts/pipeline-note-set.sh` which preserves existing keys and replaces only the ones being set. Fetch with `git fetch origin refs/notes/pipeline:refs/notes/pipeline`, view with `git log bitsweller --show-notes=pipeline`.
 - **`retros` branch** — Orphan branch, one commit per merged PR. 5-heading template (What worked / What surprised us / What we'd do differently / Follow-ups filed / Signal for future planning). Written by bitswelt at approval time. Ceiling: 15 lines.
 - **`Bitsweller-Issue: <sha>` trailer** — Added to merge commits in implementation repos (loom-tools, memctl, etc.) to close the reverse link from PR back to issue. Makes the backlink grep-exact.
 
