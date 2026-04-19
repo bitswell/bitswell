@@ -3,3 +3,8 @@ task-branch: task/bitswell-core/dispatch-check-followups
 planned-by: vesper
 planned-at: 2026-04-19
 session: bitswell-core-dogfood-plan-dispatch-check
+
+status: shipped
+impl-pr: 92
+impl-repo-pr: bitswell/loom-tools#27
+submodule-bump-sha: 350bbd0
