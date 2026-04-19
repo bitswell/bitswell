@@ -100,6 +100,8 @@ jobs:
           fi
 
           created=0
+          staged_shas=()
+          staged_contents=()
           if [ -z "${shas:-}" ]; then
             echo "No commits to process."
             echo "created=$created" >> "$GITHUB_OUTPUT"
@@ -123,7 +125,9 @@ jobs:
               project="bitswell-core"
             fi
 
-            existing_pr=$(gh pr list --state all --search "Source-Issue-Sha: $sha" --json number --limit 1 -q '.[0].number' 2>/dev/null || true)
+            # Let set -e propagate: a failed idempotency check MUST abort, not
+            # silently proceed to create a duplicate PR.
+            existing_pr=$(gh pr list --state all --search "Source-Issue-Sha: $sha" --json number --limit 1 -q '.[0].number')
             if [ -n "$existing_pr" ]; then
               echo "skip $sha: PR #$existing_pr already mirrors this commit"
               continue
@@ -163,23 +167,57 @@ jobs:
               --description "Mirrored from bitsweller project: $project" 2>/dev/null || true
             gh pr edit "$pr_num" --add-label "project:$project" 2>/dev/null || true
 
-            existing_note=$(git notes --ref=pipeline show "$sha" 2>/dev/null || true)
-            filtered_note=""
-            if [ -n "$existing_note" ]; then
-              filtered_note=$(printf '%s\n' "$existing_note" | grep -vE '^(status|issue-pr|project):[[:space:]]*' || true)
-            fi
-            new_note=$(
-              { [ -n "$filtered_note" ] && printf '%s\n' "$filtered_note"
-                printf 'status: filed\nissue-pr: %s\nproject: %s\n' "$pr_num" "$project"
-              }
-            )
-            printf '%s' "$new_note" | git notes --ref=pipeline add -f -F - "$sha"
+            # Stage the new-keys-only note content. We do NOT write to the
+            # pipeline ref here: a concurrent writer (bitsweller, bitswelt)
+            # could push between our earlier fetch and our end-of-loop push,
+            # and a non-ff rejection would silently lose status:filed /
+            # issue-pr: / project: for every mirrored commit. Instead, we
+            # buffer (sha, new-keys-content) pairs and apply them with
+            # fetch+re-merge inside a retry loop after the loop completes.
+            staged_shas+=("$sha")
+            staged_contents+=("$(printf 'status: filed\nissue-pr: %s\nproject: %s\n' "$pr_num" "$project")")
 
             created=$((created + 1))
           done <<< "$shas"
 
-          if [ "$DRY_RUN" != "true" ] && [ "$created" -gt 0 ]; then
-            git push origin refs/notes/pipeline 2>/dev/null || true
+          push_notes_with_retry() {
+            local attempts=0
+            while [ "$attempts" -lt 3 ]; do
+              # Re-fetch the latest pipeline notes on each attempt so the
+              # merge sees any keys a concurrent writer just added.
+              git fetch origin '+refs/notes/pipeline:refs/notes/pipeline' 2>/dev/null \
+                || git fetch origin 'refs/notes/pipeline:refs/notes/pipeline' 2>/dev/null \
+                || true
+              local i
+              for i in "${!staged_shas[@]}"; do
+                local sha="${staged_shas[$i]}"
+                local new_content="${staged_contents[$i]}"
+                local existing
+                existing=$(git notes --ref=pipeline show "$sha" 2>/dev/null || true)
+                local filtered=""
+                if [ -n "$existing" ]; then
+                  filtered=$(printf '%s\n' "$existing" | grep -vE '^(status|issue-pr|project):[[:space:]]*' || true)
+                fi
+                local merged
+                merged=$(
+                  { [ -n "$filtered" ] && printf '%s\n' "$filtered"
+                    printf '%s' "$new_content"
+                  }
+                )
+                printf '%s' "$merged" | git notes --ref=pipeline add -f -F - "$sha"
+              done
+              if git push origin refs/notes/pipeline; then
+                return 0
+              fi
+              attempts=$((attempts + 1))
+              echo "notes push failed (attempt $attempts/3), retrying"
+            done
+            echo "::error::notes push failed after 3 attempts; PR(s) created but refs/notes/pipeline not updated"
+            return 1
+          }
+
+          if [ "$DRY_RUN" != "true" ] && [ "${#staged_shas[@]}" -gt 0 ]; then
+            push_notes_with_retry
           fi
 
           echo "created=$created" >> "$GITHUB_OUTPUT"
