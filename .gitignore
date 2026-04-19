@@ -44,6 +44,7 @@ node_modules/
 /.claude/commands
 /.claude/skills
 /.claude/agent-memory/
+/.claude/*.lock
 /.mcp.json
 /.playwright-mcp/
 
