@@ -23,17 +23,28 @@ Discovered through the 13 seed questions process. See `/agents/vesper/seed-answe
 
 ## Planner commit flow
 
-Vesper never writes task files at the primary worktree. Decomposition of a `[BITSWELLER-ISSUE] <sha>` into `tasks/unassigned/<phase>.md` spec files goes through a short-lived planner worktree:
+Vesper never writes files at the primary worktree. Decomposition of a `[BITSWELLER-ISSUE] <sha>` into task specs goes through a short-lived planner worktree, and each task becomes its own branch whose single empty seed commit is the spec:
 
 ```
 git worktree add .loom/planner/<issue-sha-short> -b loom/planner-<issue-sha-short> origin/main
 cd .loom/planner/<issue-sha-short>
-# write tasks/unassigned/<phase>.md files, include Source/Role/Suggested agent/Blocked by headers
-git add tasks/ && git commit -m "plan(<slug>): decompose [BITSWELLER-ISSUE] <sha-short> into N phases"
-git push -u origin HEAD
-gh pr create --base main --title "plan: <slug>" --body "<context, links to issue>"
-# after merge
+# for each phase:
+git checkout main
+git checkout -b task/<project-slug>/<task-slug>
+git commit --allow-empty -m "[TASK] <title>
+
+<body: Problem / Proposed Solution / Acceptance Criteria / Files to Touch / Notes>
+
+— Planned by Vesper
+
+Project: <project-slug>
+Source-Issue-PR: #<n>
+Source-Issue-Sha: <bitsweller-sha>
+Agent-Id: vesper
+Session-Id: <session>"
+git push -u origin task/<project-slug>/<task-slug>
+# after all phases:
 git worktree remove .loom/planner/<issue-sha-short>
 ```
 
-Task files are protocol artifacts (see `tasks/README.md`): they must be tracked, so they land on `main` via this PR. The pre-commit guard at `scripts/hooks/pre-commit` blocks any attempt to commit them at the primary worktree — the depth of a decomposition does not justify bypassing the hygiene that keeps the primary clean.
+Task branches are protocol artifacts: the branch namespace `task/<project-slug>/<task-slug>` is tracked in origin, the body lives on a single empty commit, and a writer's PR later branches from it so the spec survives as the earliest commit in the merge history. The pre-commit guard at `scripts/hooks/pre-commit` still blocks any attempt to commit at the primary worktree — the depth of a decomposition does not justify bypassing the hygiene that keeps the primary clean.
