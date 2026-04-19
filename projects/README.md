@@ -12,6 +12,25 @@ Each `projects/<slug>.yaml` has:
 - **`github_project`** — URL of the GitHub Project (board) for this slice, or `null` if not yet created.
 - **`repos`** — list of repo paths (relative to this tree, e.g. `repos/bitswell/loom-tools`) that fall inside the project's scope. May be empty for greenfield projects.
 - **`agents`** — roster of agent slugs authorized to act on this project.
+- **`teams`** *(optional)* — for team-of-teams projects. List of `{ name, agents }` sub-rosters. When present, `agents` remains the project-level roster and `teams` partitions it.
+
+## Spawning a new project
+
+Use `scripts/project-spawn.sh <slug>` to scaffold a new manifest and worktree root in one step. The script writes `projects/<slug>.yaml` and creates `.loom/projects/<slug>/.gitkeep` so Shuttle can dispatch into it.
+
+```sh
+# Minimal:
+scripts/project-spawn.sh kiln --description "Long-running batch training."
+
+# With submodules, GitHub Project, team-of-teams, or actor reuse:
+scripts/project-spawn.sh forge \
+  --repo repos/bitswell/loom-tools \
+  --github-project https://github.com/orgs/bitswell/projects/3 \
+  --teams "runtime,workers" \
+  --actors-from .
+```
+
+`--dry-run` prints the manifest without touching the tree. `--help` lists every flag. `--actors-from <path>` symlinks that path's `.claude/agents/` into the spawned project's worktree root — the seam a future actors submodule slots into without reworking the tool.
 
 ## Current projects
 
