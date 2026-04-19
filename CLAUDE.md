@@ -2,7 +2,7 @@
 
 ## Main Agent
 
-**Bitswell** (`.claude/agents/bitswell.md`) is the primary agent for this project — the user-facing layer that coordinates the team. Bitswell stays at the primary worktree, always; operational work (worktree mechanics, dispatch, PR lifecycle) belongs to **Shuttle**.
+**Bitswell** (`.claude/agents/bitswell.md`) is the primary agent for this project — the user-facing layer that coordinates the team. Bitswell stays at the primary worktree, always; operational work (worktree mechanics, team assembly, PR lifecycle) runs in **Shuttle-mode** — a role the top-level session adopts, not a separate process.
 
 To invoke bitswell explicitly, use `@bitswell` or launch it as a subagent. Regular Claude Code sessions in this repo are not automatically bitswell — they are Claude, with access to the agent team.
 
@@ -13,7 +13,7 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 | Agent | Role | When to use |
 |-------|------|-------------|
 | **bitswell** | Top-level agent | User interaction, strategy, dispatch. Never leaves the primary worktree |
-| **shuttle** | Operational orchestrator | Worktree mechanics, dispatches writers/reviewers, PR lifecycle |
+| **shuttle** | Operational orchestrator role | Worktree mechanics, team assembly, PR lifecycle. A mode the lead adopts — not a spawnable subagent |
 | **bitsweller** | Issue finder | Proactively finds optimization opportunities |
 | **vesper** | Planner | Decomposes issues into implementation tasks |
 | **ratchet** | Writer | Implements tasks — structural, practical |
@@ -28,9 +28,9 @@ Project identity and values are in `AGENT.md`. Agent identities are in `agents/<
 
 **Two layered rules:**
 
-1. **Mechanical (pre-commit hook)** — the primary worktree (`/home/willem/bitswell/bitswell`) stays on `main` with a clean working tree. Every file-mutating change lands on `main` via a PR from a linked worktree under `.loom/<role>/<slug>`. The hook at `scripts/hooks/pre-commit` blocks violations (activate via `./startup.sh`, which sets `core.hooksPath=scripts/hooks`).
+1. **Mechanical (pre-commit hook)** — the primary worktree (`/home/willem/bitswell/bitswell`) stays on `main` with a clean working tree. Every file-mutating change lands on `main` via a PR from a linked worktree under `.loom/projects/<project-slug>/<role>/<slug>`. The hook at `scripts/hooks/pre-commit` blocks violations (activate via `./startup.sh`, which sets `core.hooksPath=scripts/hooks`).
 
-2. **Behavioral (who does what)** — Bitswell is the top-level agent. It talks to the user, decides goals, and **dispatches**. Shuttle is the operational orchestrator — Shuttle creates worktrees, dispatches writers (Moss, Ratchet) inside them, drives reviews (Drift, Sable, Thorn, Glitch), and owns the PR lifecycle through merge. Bitswell never `cd`s into `.loom/...`; when Bitswell catches itself about to, that is the signal to spawn Shuttle instead.
+2. **Behavioral (who does what)** — Bitswell is the top-level agent: strategic, user-facing, decides goals. Shuttle is the **operational orchestrator role** — the mode the top-level session shifts into when handling worktree mechanics and PR work. Dispatch happens via **Agent Teams**: the lead calls `TeamCreate` and spawns writer/reviewer/approver *teammates* (not nested subagents). Writers (Moss, Ratchet) and reviewers (Drift, Sable, Thorn, Glitch) coordinate via `SendMessage` and a shared task list; Shuttle-mode drives the flow. Shuttle cannot itself be spawned as a subagent for dispatch — Claude Code subagents cannot spawn further agents. See MEMORY `feedback_subagents_cant_nest.md`.
 
 - Agents work in git worktrees. Use standard git (branch, commit, push, PR) — no external VCS tools.
 - Bitsweller files issues as commits on the `bitsweller` branch.
