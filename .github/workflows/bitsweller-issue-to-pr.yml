@@ -189,6 +189,9 @@ jobs:
                 || git fetch origin 'refs/notes/pipeline:refs/notes/pipeline' 2>/dev/null \
                 || true
               local i
+              # Key-replace semantics, inlined here so the runner doesn't need
+              # scripts/pipeline-note-set.sh on PATH. Local callers use that
+              # script instead of duplicating this block.
               for i in "${!staged_shas[@]}"; do
                 local sha="${staged_shas[$i]}"
                 local new_content="${staged_contents[$i]}"
