@@ -3,11 +3,12 @@
 Thumbs.db
 
 # Editor
+# (Patterns without trailing slash so they match sandbox char-device bind-mounts as well as real dirs)
 *.swp
 *.swo
 *~
-.vscode/
-.idea/
+.vscode
+.idea
 
 # Node (if ever needed)
 node_modules/
