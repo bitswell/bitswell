@@ -4,3 +4,9 @@
 [submodule "repos/bitswell/loom-plugin"]
 	path = repos/bitswell/loom-plugin
 	url = git@github-bitswell:bitswell/loom-plugin.git
+[submodule "repos/bitswell/git-quest"]
+	path = repos/bitswell/git-quest
+	url = git@github-bitswell:bitswell/git-quest.git
+[submodule "repos/bitswell/memctl"]
+	path = repos/bitswell/memctl
+	url = git@github-bitswell:bitswell/memctl.git
